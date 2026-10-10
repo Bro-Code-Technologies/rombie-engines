@@ -1,0 +1,35 @@
+diff --git a/libretro.cpp b/libretro.cpp
+index f8bca7a..8a7f7cc 100644
+--- a/libretro.cpp
++++ b/libretro.cpp
+@@ -691,7 +691,12 @@ MDFN_COLD RETRO_API bool retro_load_game(const retro_game_info* game)
+   pipe_option("supafaust_superfx_clock_rate", "snes_faust.superfx.clock_rate");
+   pipe_option_bool("supafaust_superfx_icache", "snes_faust.superfx.icache");
+ 
++#ifdef __EMSCRIPTEN__
++  // No threads in RetroArch's web build, so the multi-threaded renderer cannot start.
++  MDFNI_SetSetting("snes_faust.renderer", "st");
++#else
+   MDFNI_SetSetting("snes_faust.renderer", "mt");
++#endif
+   //
+   //
+   //
+diff --git a/mednafen/config.h b/mednafen/config.h
+index 720638d..8a9e77c 100644
+--- a/mednafen/config.h
++++ b/mednafen/config.h
+@@ -4,11 +4,11 @@
+ #define MDFN_SNES_FAUST_SKETCHYSPC700OPT 1
+ //#define MDFN_SNES_FAUST_SKETCHYPPUOPT 1
+ 
+-#if !defined(__SWITCH__) && !defined(HAVE_LIBNX)
++#if !defined(__SWITCH__) && !defined(HAVE_LIBNX) && !defined(__EMSCRIPTEN__)
+ #define HAVE_SEM_TIMEDWAIT 1
+ #endif
+ 
+-#if !defined(ANDROID) && !defined(__APPLE__) && !defined(__SWITCH__) && !defined(HAVE_LIBNX)
++#if !defined(ANDROID) && !defined(__APPLE__) && !defined(__SWITCH__) && !defined(HAVE_LIBNX) && !defined(__EMSCRIPTEN__)
+ #define PTHREAD_AFFINITY_NP cpu_set_t
+ #endif
+ 

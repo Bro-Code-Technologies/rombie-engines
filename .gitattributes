@@ -1,0 +1,3 @@
+# The build scripts and patches run in Linux containers, so they stay LF on every checkout,
+# Windows included.
+* text=auto eol=lf
