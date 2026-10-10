@@ -1,0 +1,75 @@
+#!/bin/sh
+# Builds Rombie's netplay engine: netplay-main.c and netplay-worker.js linked with one libretro
+# core, the files Rombie serves from its public/netplay/. Run from the repo root (see README.md):
+#   docker build -t rombie-netplay netplay
+#   docker run --rm -v "${PWD}:/repo" rombie-netplay sh /repo/netplay/build.sh
+# Output: netplay/out/fceumm.js and .wasm, and SHA256SUMS.
+set -eu
+REPO=/repo
+W=/work
+OUT=$REPO/netplay/out
+N=$(nproc)
+# The core's commit, stamped into its version string as libretro's buildbot does ("(SVN) 5cd4a43").
+FCEUMM_COMMIT=5cd4a43
+
+# Each source is copied out of the repo before building, so the checkout stays clean and a Windows
+# checkout's line endings never reach the compiler: from git when the folder is a checked-out
+# submodule (exactly the commit the repo pins), as plain files in a release's source archive.
+copy_source() { # repo-path work-dir
+  rm -rf "${W:?}/$2"
+  mkdir -p "$W/$2"
+  if [ -e "$REPO/$1/.git" ]; then
+    head=$(git -C "$REPO/$1" rev-parse HEAD)
+    pinned=$(git -C "$REPO" ls-files -s "$1" | awk '{print $2}')
+    if [ -n "$pinned" ] && [ "$pinned" != "$head" ]; then
+      echo "$1 is at $head, but the repo pins $pinned (git submodule update)"; exit 1
+    fi
+    git -C "$REPO/$1" -c core.autocrlf=false archive HEAD | tar -x -C "$W/$2"
+    echo "$1 at $head"
+  elif [ -n "$(ls -A "$REPO/$1" 2>/dev/null)" ]; then
+    cp -a "$REPO/$1/." "$W/$2/"
+    echo "$1 from the source archive"
+  else
+    echo "$1 is empty (git submodule update --init)"; exit 1
+  fi
+}
+
+copy_source netplay/fceumm fceumm
+mkdir -p "$W/engine"
+cp "$REPO/netplay/netplay-main.c" "$REPO/netplay/netplay-worker.js" "$W/engine/"
+
+# The fceumm commit's date (2025-09-13 00:57:07 UTC), so rebuilds are byte for byte the same.
+export SOURCE_DATE_EPOCH=1757725027
+
+# The core as libretro builds it for Emscripten (platform=emscripten: a static object, 32-bit
+# colour), which is the build Rombie's solo NES runs. It asks for zlib from outside, but nothing in
+# it uses zlib, so the engine links none.
+(cd "$W/fceumm" && emmake make -f Makefile.libretro -j"$N" platform=emscripten GIT_VERSION="\" $FCEUMM_COMMIT\"")
+
+# A statically linked core leaves libretro-common's file, memory-stream and string helpers to the
+# frontend (RetroArch links its own copy); the engine takes them from the core's copy, the list
+# fceumm's Makefile.common builds when it is not statically linked.
+LRC=$W/fceumm/src/drivers/libretro/libretro-common
+COMMON="compat/compat_posix_string.c compat/compat_snprintf.c compat/compat_strcasestr.c
+  compat/compat_strl.c compat/fopen_utf8.c encodings/encoding_utf.c file/file_path.c
+  file/file_path_io.c streams/file_stream.c streams/file_stream_transforms.c
+  streams/memory_stream.c string/stdstring.c time/rtime.c vfs/vfs_implementation.c"
+
+# One module per core, run in a Worker. Single-threaded: no SharedArrayBuffer, so no
+# cross-origin isolation is needed.
+mkdir -p "$W/out"
+emcc -O3 \
+  -I "$LRC/include" \
+  "$W/engine/netplay-main.c" "$W/fceumm/fceumm_libretro_emscripten.bc" \
+  $(for f in $COMMON; do echo "$LRC/$f"; done) \
+  -sENVIRONMENT=worker \
+  -sALLOW_MEMORY_GROWTH=1 \
+  -sINITIAL_MEMORY=33554432 \
+  -sEXPORTED_FUNCTIONS=_malloc,_free \
+  -sEXPORTED_RUNTIME_METHODS=FS,UTF8ToString,stringToNewUTF8,HEAPU8,HEAP16 \
+  --post-js "$W/engine/netplay-worker.js" \
+  -o "$W/out/fceumm.js"
+
+mkdir -p "$OUT"
+cp "$W/out/fceumm.js" "$W/out/fceumm.wasm" "$OUT/"
+(cd "$OUT" && sha256sum fceumm.js fceumm.wasm | tee SHA256SUMS)

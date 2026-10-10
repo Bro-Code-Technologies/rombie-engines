@@ -11,8 +11,9 @@ rebuilt from here. Each release attaches a full-source archive that includes the
 | --- | --- | --- | --- | --- |
 | `snes/` | RetroArch for Emscripten with Beetle Supafaust, Rombie's SNES emulator | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` | GPL-3.0-or-later (RetroArch) with GPL-2.0-or-later (Supafaust) | `public/cores/mednafen_supafaust_libretro.js`, `.wasm` |
 | `mgba-link/` | mGBA for Rombie's Link Cable engine (two-player link play for Game Boy Color and Game Boy Advance) | `mgba`: [thenick775/mgba](https://github.com/thenick775/mgba) `e974b288bd7e5cfc7c7b96f8b4d32b673ddfb68c` (branch `feature/wasm`) | MPL-2.0 | `public/link-cable/mgba-link.js`, `.wasm` |
+| `netplay/` | Rombie's netplay engine: a libretro frontend of Rombie's own, run in a Web Worker, built with one core per file (NES so far) | `fceumm`: [libretro/libretro-fceumm](https://github.com/libretro/libretro-fceumm) `5cd4a43e16a7f3cd35628d481c347a0a98cfdfa2` | GPL-2.0-or-later | none yet (it will be `public/netplay/`) |
 
-A `netplay/` folder will follow for Rombie's netplay engine.
+`netplay/` is not in a Rombie release yet. Its own README describes the engine, its messages and its checks.
 
 ## Which Rombie release used what
 
@@ -39,7 +40,7 @@ df3497e4fbf0fe148cec20abd42821fdc1aeb98da4c278bfb60036b1f4e23032  mednafen_supaf
 
 ## Building
 
-Both builds run in Docker, from the repo root, with the submodules checked out
+Every build runs in Docker, from the repo root, with the submodules checked out
 (`git submodule update --init`).
 
 **SNES**
@@ -72,6 +73,15 @@ holds those two. `patches/CMakeLists.txt.patch` is the one line added to mGBA's 
 them as a target. With Rombie's two files from the same release, the output matches the hashes above byte for
 byte.
 
+**Netplay engine**
+
+```sh
+docker build -t rombie-netplay netplay
+docker run --rm -v "${PWD}:/repo" rombie-netplay sh /repo/netplay/build.sh
+```
+
+The output lands in `netplay/out/` with its `SHA256SUMS`; `netplay/README.md` has the details.
+
 ## Releases
 
 Each engine is released on its own, named like Rombie's PS2 engine: tag `rombie-<engine>-engine-<version>`
@@ -94,4 +104,5 @@ byte the shipped one.
 `MPL-2.0.txt` (mGBA's `LICENSE`), each copied from the project at the pinned commit. Every upstream project stays
 under its own license. The files written for this repo (build scripts, Dockerfile, patches, this README) are under
 the license of what they build: GPL-3.0-or-later in `snes/` and at the root, except the Supafaust patch, which
-stays under Supafaust's GPL-2.0-or-later, and MPL-2.0 in `mgba-link/`.
+stays under Supafaust's GPL-2.0-or-later, MPL-2.0 in `mgba-link/`, and GPL-2.0-or-later in `netplay/`, whose engine
+links GPL-2.0-or-later cores. fceumm's own copy of its license, `Copying`, is an older printing of `GPL-2.0.txt`.

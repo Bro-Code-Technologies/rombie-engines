@@ -10,3 +10,7 @@
 	path = mgba-link/mgba
 	url = https://github.com/thenick775/mgba.git
 	shallow = true
+[submodule "netplay/fceumm"]
+	path = netplay/fceumm
+	url = https://github.com/libretro/libretro-fceumm.git
+	shallow = true
