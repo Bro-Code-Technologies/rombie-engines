@@ -32,10 +32,14 @@
     own state; unwrapping RetroArch's file is the caller's job), then plays on.
   Serve this folder over HTTP after building (a Worker will not start from file://), for
   example `python -m http.server 8642` in netplay/, and open http://localhost:8642/test.html.
+  ?engine=out/supafaust.js or ?engine=out/pcsx_rearmed.js picks another engine. For a disc game,
+  pick all of its files at once (a .cue and its .bin files, or one .chd); the .cue is loaded.
+  A BIOS goes into the core's system folder under the name it is picked with.
 -->
 <h1>Netplay engine check</h1>
 <fieldset>
-  <label>ROM <input type="file" id="rom"></label>
+  <label>ROM or disc files <input type="file" id="rom" multiple></label>
+  <label>BIOS (PS1) <input type="file" id="bios"></label>
   <label>Core state for the solo check <input type="file" id="state"></label>
 </fieldset>
 <fieldset>
@@ -97,15 +101,29 @@ class Engine {
   close() { this.worker.terminate() }
 }
 
+const DISC = /\.(cue|bin|img|iso|chd|pbp)$/i
+
 async function readRom() {
-  const file = $('rom').files[0]
-  if (!file) throw new Error('pick a ROM first')
-  return { name: file.name, bytes: await file.arrayBuffer() }
+  const picked = [...$('rom').files]
+  if (!picked.length) throw new Error('pick a ROM first')
+  const bios = $('bios').files[0]
+  const system = bios ? [{ name: bios.name, data: await bios.arrayBuffer() }] : []
+  // A disc is mounted from its files in the engine's Worker, never read here.
+  const disc = picked.length > 1 || DISC.test(picked[0].name)
+  const main = picked.find((file) => /\.cue$/i.test(file.name)) || picked[0]
+  return {
+    name: main.name,
+    size: picked.reduce((sum, file) => sum + file.size, 0),
+    system,
+    ...(disc ? { files: picked.map((file) => ({ name: file.name, data: file })) } : { bytes: await main.arrayBuffer() }),
+  }
 }
 
 async function startEngine(rom) {
   const engine = new Engine()
-  const info = await engine.request({ type: 'load', rom: rom.bytes.slice(0), name: rom.name })
+  const system = rom.system.map((file) => ({ name: file.name, data: file.data.slice(0) }))
+  const game = rom.files ? { files: rom.files } : { rom: rom.bytes.slice(0) }
+  const info = await engine.request({ type: 'load', name: rom.name, system, ...game })
   return { engine, info }
 }
 
@@ -409,7 +427,7 @@ async function run(which) {
   results.error = null
   try {
     const rom = await readRom()
-    log(`rom ${rom.name} (${rom.bytes.byteLength} bytes), engine ${ENGINE_URL}`)
+    log(`rom ${rom.name} (${rom.size} bytes${rom.files ? `, ${rom.files.length} files mounted` : ''}${rom.system.length ? `, BIOS ${rom.system[0].name}` : ''}), engine ${ENGINE_URL}`)
     if (which === 'all' || which === 'timings') results.timings = await runTimings(rom)
     if (which === 'all' || which === 'solo') results.solo = await runSolo(rom)
     if (which === 'all' || which === 'stress') results.stress = await runStress(rom)

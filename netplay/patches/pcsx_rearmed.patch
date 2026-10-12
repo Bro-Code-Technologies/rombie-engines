@@ -1,0 +1,158 @@
+--- a/frontend/libretro.c
++++ b/frontend/libretro.c
+@@ -1265,6 +1265,8 @@
+    ret = LoadState(data);
+    if (ret)
+       return false;
++   // Between frames a running core has handed over its last picture; one loaded before its first frame has not.
++   vout_fb_dirty = 0;
+    if (CdromFrontendId != -1 && CdromFrontendId != disk_current_index)
+       disk_set_image_index(CdromFrontendId);
+    return true;
+--- a/libpcsxcore/cdrom.c
++++ b/libpcsxcore/cdrom.c
+@@ -1789,7 +1789,9 @@
+ 		getCdInfo();
+ 
+ 		cdr.FifoOffset = tmp < DATA_SIZE ? tmp : DATA_SIZE;
+-		cdr.FifoSize = (cdr.Mode & MODE_SIZE_2340) ? 2340 : 2048 + 12;
++		// The size is the mode's when the sector reached the FIFO, which the mode may have changed since.
++		if (cdr.FifoSize != 2340 && cdr.FifoSize != 2048 + 12)
++			cdr.FifoSize = (cdr.Mode & MODE_SIZE_2340) ? 2340 : 2048 + 12;
+ 		if (cdr.SubqForwardSectors > SUBQ_FORWARD_SECTORS)
+ 			cdr.SubqForwardSectors = SUBQ_FORWARD_SECTORS;
+ 
+--- a/libpcsxcore/misc.c
++++ b/libpcsxcore/misc.c
+@@ -698,6 +698,9 @@
+ 	u32 frame_counter;
+ 	int CdromFrontendId;
+ 	u32 save_counter;
++	u32 subCycle;
++	u32 dloadSel;
++	u32 mcdFlags;
+ };
+ 
+ #define EX_SCREENPIC_SIZE (128 * 96 * 3)
+@@ -730,6 +733,9 @@
+ 	misc->frame_counter = frame_counter;
+ 	misc->CdromFrontendId = CdromFrontendId;
+ 	misc->save_counter = ++save_counter;
++	misc->subCycle = psxRegs.subCycle;
++	misc->dloadSel = psxRegs.dloadSel;
++	misc->mcdFlags = sioNewCardFlags();
+ 
+ 	psxCpu->Notify(R3000ACPU_NOTIFY_BEFORE_SAVE, NULL);
+ 
+@@ -798,6 +804,7 @@
+ int LoadState(const char *file) {
+ 	struct misc_save_data *misc = (void *)(psxH + 0xf000);
+ 	u32 biosBranchCheckOld = psxRegs.biosBranchCheck;
++	u32 subCycle = 0, dloadSel = 0, mcdFlags = 0;
+ 	void *f;
+ 	GPUFreeze_t *gpufP = NULL;
+ 	SPUFreeze_t *spufP = NULL;
+@@ -861,6 +868,9 @@
+ 		CdromFrontendId = misc->CdromFrontendId;
+ 		if (misc->save_counter)
+ 			save_counter = misc->save_counter;
++		subCycle = misc->subCycle;
++		dloadSel = misc->dloadSel;
++		mcdFlags = misc->mcdFlags;
+ 	}
+ 
+ 	if (Config.HLE)
+@@ -901,6 +911,10 @@
+ 		psxBiosCheckExe(biosBranchCheckOld, 0x60, 1);
+ 
+ 	psxCpu->Notify(R3000ACPU_NOTIFY_AFTER_LOAD, NULL);
++	// The interpreter clears these on a load (above); a state saved with them carries them.
++	psxRegs.subCycle = subCycle;
++	psxRegs.dloadSel = dloadSel;
++	sioSetNewCardFlags(mcdFlags);
+ 
+ 	result = 0;
+ cleanup:
+--- a/libpcsxcore/psxcounters.c
++++ b/libpcsxcore/psxcounters.c
+@@ -605,7 +605,13 @@
+             _psxRcntWmode( i, rcnts[i].mode );
+             count = (psxRegs.cycle - rcnts[i].cycleStart) / rcnts[i].rate;
+             if (count > 0x1000)
++            {
++                // Keep the part of a tick already counted, so a loaded counter runs on exactly as
++                // the saved one would have.
++                u32 part = (psxRegs.cycle - rcnts[i].cycleStart) % rcnts[i].rate;
+                 _psxRcntWcount( i, count & 0xffff );
++                rcnts[i].cycleStart -= part;
++            }
+         }
+         scheduleRcntBase();
+         psxRcntSet();
+--- a/libpcsxcore/sio.c
++++ b/libpcsxcore/sio.c
+@@ -788,3 +788,18 @@
+ 
+ 	return 0;
+ }
++
++// The memory cards' "new card" flags, which the game reads, are outside sioFreeze's format; misc.c saves them, marked
++// so a state saved without them leaves them as they are.
++#define NEW_CARD_FLAGS_MARK 0x4d430000
++
++u32 sioNewCardFlags(void) {
++	return NEW_CARD_FLAGS_MARK | (cardh1[1] << 8) | cardh2[1];
++}
++
++void sioSetNewCardFlags(u32 flags) {
++	if ((flags & 0xffff0000) != NEW_CARD_FLAGS_MARK)
++		return;
++	cardh1[1] = flags >> 8;
++	cardh2[1] = flags;
++}
+--- a/libpcsxcore/sio.h
++++ b/libpcsxcore/sio.h
+@@ -50,6 +50,8 @@
+ 
+ void sioInterrupt();
+ int sioFreeze(void *f, int Mode);
++u32 sioNewCardFlags(void);
++void sioSetNewCardFlags(u32 flags);
+ 
+ void LoadMcd(int mcd, char *str);
+ void LoadMcds(char *mcd1, char *mcd2);
+--- a/plugins/gpulib/gpu.c
++++ b/plugins/gpulib/gpu.c
+@@ -903,6 +903,8 @@
+   return ret;
+ }
+ 
++#define EXACT_LOAD_MARK 0x45584100u
++
+ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze)
+ {
+   int i;
+@@ -917,6 +919,9 @@
+       memcpy(freeze->ulControl, gpu.regs, sizeof(gpu.regs));
+       memcpy(freeze->ulControl + 0xe0, gpu.ex_regs, sizeof(gpu.ex_regs));
+       freeze->ulStatus = gpu.status;
++      // In a slot nothing else uses: whether the picture has changed since it was last shown, so a
++      // loaded state shows the same frames as the saved one would have.
++      freeze->ulControl[0xff] = EXACT_LOAD_MARK | gpu.state.fb_dirty | (gpu.state.blanked << 1);
+       break;
+     case 0: // load
+       renderer_sync();
+@@ -929,6 +934,13 @@
+         GPUwriteStatus((i << 24) | freeze->ulControl[i]);
+       renderer_sync_ecmds(gpu.ex_regs);
+       renderer_update_caches(0, 0, 1024, 512, 0);
++      if ((freeze->ulControl[0xff] & ~3u) == EXACT_LOAD_MARK) {
++        // Replaying the control writes above sets some of this differently from the saved GPU.
++        memcpy(gpu.regs, freeze->ulControl, sizeof(gpu.regs));
++        gpu.status = freeze->ulStatus;
++        gpu.state.fb_dirty = freeze->ulControl[0xff] & 1;
++        gpu.state.blanked = (freeze->ulControl[0xff] >> 1) & 1;
++      }
+       break;
+   }
+ 

@@ -295,20 +295,26 @@ EMSCRIPTEN_KEEPALIVE void np_set_option(const char *key, const char *value) {
   options_updated = 1;
 }
 
-/* The game is read from the module's file system: cores that want a path get one, and cores
- * that want the data get that. */
+/* The game is read from the module's file system: cores that want a path get only the path (a
+ * disc can be hundreds of MB, read as the core needs it), and cores that want the data get that. */
 EMSCRIPTEN_KEEPALIVE int np_load_game(const char *path) {
-  FILE *f = fopen(path, "rb");
-  if (!f) return 0;
-  fseek(f, 0, SEEK_END);
-  long size = ftell(f);
-  fseek(f, 0, SEEK_SET);
-  game_data = malloc(size > 0 ? size : 1);
-  size_t read = fread(game_data, 1, size, f);
-  fclose(f);
-  struct retro_game_info info = { path, game_data, read, NULL };
+  struct retro_game_info info = { path, NULL, 0, NULL };
+  if (!system_info.need_fullpath) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    game_data = malloc(size > 0 ? size : 1);
+    info.data = game_data;
+    info.size = fread(game_data, 1, size, f);
+    fclose(f);
+  }
   if (!retro_load_game(&info)) return 0;
   game_loaded = 1;
+  /* The core has just read the options it was loaded with. Left pending, they would be read again at its first
+   * frame, which only this engine runs that way (pcsx_rearmed reopens its GPU on it). */
+  options_updated = 0;
   retro_get_system_av_info(&av_info);
   state_size = retro_serialize_size();
   ring = malloc(state_size * RING_SLOTS);
@@ -361,6 +367,9 @@ EMSCRIPTEN_KEEPALIVE int np_run_frame(void) {
   int slot = frame_number & (RING_SLOTS - 1);
   if (!retro_serialize(ring + (size_t)slot * state_size, state_size)) return 0;
   ring_frame[slot] = frame_number;
+  /* A frame that shows no new picture (a 30 fps game, every other frame) hashes as 0, not as the
+   * last picture shown, which after a rollback was drawn by frames since undone. */
+  video_hash = 0;
   retro_run();
   frame_number++;
   return 1;

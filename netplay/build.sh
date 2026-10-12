@@ -3,7 +3,8 @@
 # core each, the files Rombie serves from its public/netplay/. Run from the repo root (see README.md):
 #   docker build -t rombie-netplay netplay
 #   docker run --rm -v "${PWD}:/repo" rombie-netplay sh /repo/netplay/build.sh
-# Output: netplay/out/fceumm.js and .wasm (NES), supafaust.js and .wasm (SNES), and SHA256SUMS.
+# Output: netplay/out/fceumm.js and .wasm (NES), supafaust.js and .wasm (SNES), pcsx_rearmed.js and
+# .wasm (PS1), and SHA256SUMS.
 set -eu
 REPO=/repo
 W=/work
@@ -93,6 +94,35 @@ em++ -O3 \
   --post-js "$W/engine/netplay-worker.js" \
   -o "$W/out/supafaust.js"
 
+# pcsx_rearmed (PS1), the commit libretro's buildbot built for RetroArch 1.22.2 (its core reports
+# "r25 228c14e"), which is the build Rombie's solo PS1 runs, so a solo game's state loads here.
+# platform=emscripten builds it with no threads, no dynamic recompiler and no asynchronous CD reads.
+# It reads CHD and PBP images with zlib, which Emscripten provides as a port. A disc is read from
+# the files the page mounts (WORKERFS), never copied whole into memory.
+PCSX_COMMIT=228c14e
+copy_source netplay/pcsx_rearmed pcsx_rearmed
+# A loaded state must run on exactly as the saved one would, for rollback: the patch restores what
+# a load otherwise loses (README.md, The cores).
+git -C "$W/pcsx_rearmed" apply "$REPO/netplay/patches/pcsx_rearmed.patch"
+echo "applied patches/pcsx_rearmed.patch"
+# The pcsx_rearmed commit's date (2025-08-16 17:27:41 UTC); its frontend stamps __DATE__.
+export SOURCE_DATE_EPOCH=1755365261
+# The zlib port's headers are needed when compiling as well as linking.
+export EMCC_CFLAGS=-sUSE_ZLIB=1
+(cd "$W/pcsx_rearmed" && emmake make -f Makefile.libretro -j"$N" platform=emscripten GIT_VERSION="\" $PCSX_COMMIT\"")
+emcc -O3 \
+  -I "$LRC/include" \
+  "$W/engine/netplay-main.c" "$W/pcsx_rearmed/pcsx_rearmed_libretro_emscripten.bc" \
+  -lworkerfs.js \
+  -sENVIRONMENT=worker \
+  -sALLOW_MEMORY_GROWTH=1 \
+  -sINITIAL_MEMORY=134217728 \
+  -sEXPORTED_FUNCTIONS=_malloc,_free \
+  -sEXPORTED_RUNTIME_METHODS=FS,UTF8ToString,stringToNewUTF8,HEAPU8,HEAP16 \
+  --post-js "$W/engine/netplay-worker.js" \
+  -o "$W/out/pcsx_rearmed.js"
+
 mkdir -p "$OUT"
-cp "$W/out/fceumm.js" "$W/out/fceumm.wasm" "$W/out/supafaust.js" "$W/out/supafaust.wasm" "$OUT/"
-(cd "$OUT" && sha256sum fceumm.js fceumm.wasm supafaust.js supafaust.wasm | tee SHA256SUMS)
+cp "$W/out/fceumm.js" "$W/out/fceumm.wasm" "$W/out/supafaust.js" "$W/out/supafaust.wasm" \
+  "$W/out/pcsx_rearmed.js" "$W/out/pcsx_rearmed.wasm" "$OUT/"
+(cd "$OUT" && sha256sum fceumm.js fceumm.wasm supafaust.js supafaust.wasm pcsx_rearmed.js pcsx_rearmed.wasm | tee SHA256SUMS)

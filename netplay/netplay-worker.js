@@ -56,12 +56,23 @@
   const handlers = {
     load(msg) {
       const name = String(msg.name || 'game').replace(/[/\\]/g, '_')
-      const path = '/' + name
-      FS.writeFile(path, new Uint8Array(msg.rom))
+      let path = '/' + name
+      if (msg.files) {
+        // A disc's files, as Blobs: mounted read-only and read as the core asks, never copied
+        // whole into memory. name is the one to load (a .cue names the others).
+        FS.mkdir('/game')
+        FS.mount(WORKERFS, { blobs: msg.files.map((file) => ({ name: String(file.name).replace(/[/\\]/g, '_'), data: file.data })) }, '/game')
+        path = '/game/' + name
+      } else {
+        FS.writeFile(path, new Uint8Array(msg.rom))
+      }
       for (const file of msg.system || []) {
         FS.writeFile('/system/' + String(file.name).replace(/[/\\]/g, '_'), new Uint8Array(file.data))
       }
       for (const [key, value] of Object.entries(msg.options || {})) setOption(key, value)
+      // The core starts only now, with its system folder and options in place: some look for their BIOS as they
+      // start (pcsx_rearmed does), as they would in a frontend whose system folder is already full.
+      _np_init()
       const p = str(path)
       const loaded = _np_load_game(p)
       _free(p)
@@ -222,7 +233,6 @@
   function start() {
     FS.mkdir('/system')
     FS.mkdir('/save')
-    _np_init()
     started = true
     postMessage({ type: 'ready' })
     for (const msg of early.splice(0)) handle(msg)

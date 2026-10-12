@@ -18,3 +18,7 @@
 	path = netplay/supafaust
 	url = https://github.com/libretro/supafaust.git
 	shallow = true
+[submodule "netplay/pcsx_rearmed"]
+	path = netplay/pcsx_rearmed
+	url = https://github.com/libretro/pcsx_rearmed.git
+	shallow = true
