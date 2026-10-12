@@ -11,7 +11,7 @@ rebuilt from here. Each release attaches a full-source archive that includes the
 | --- | --- | --- | --- | --- |
 | `snes/` | RetroArch for Emscripten with Beetle Supafaust, Rombie's SNES emulator | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` | GPL-3.0-or-later (RetroArch) with GPL-2.0-or-later (Supafaust) | `public/cores/mednafen_supafaust_libretro.js`, `.wasm` |
 | `mgba-link/` | mGBA for Rombie's Link Cable engine (two-player link play for Game Boy Color and Game Boy Advance) | `mgba`: [thenick775/mgba](https://github.com/thenick775/mgba) `e974b288bd7e5cfc7c7b96f8b4d32b673ddfb68c` (branch `feature/wasm`) | MPL-2.0 | `public/link-cable/mgba-link.js`, `.wasm` |
-| `netplay/` | Rombie's netplay engine: a libretro frontend of Rombie's own, run in a Web Worker, built with one core per file (NES and SNES) | `fceumm`: [libretro/libretro-fceumm](https://github.com/libretro/libretro-fceumm) `5cd4a43e16a7f3cd35628d481c347a0a98cfdfa2` · `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` | GPL-2.0-or-later | `public/netplay/fceumm.js`, `.wasm`, `supafaust.js`, `.wasm` |
+| `netplay/` | Rombie's netplay engine: a libretro frontend of Rombie's own, run in a Web Worker, built with one core per file (NES, SNES and PS1) | `fceumm`: [libretro/libretro-fceumm](https://github.com/libretro/libretro-fceumm) `5cd4a43e16a7f3cd35628d481c347a0a98cfdfa2` · `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` · `pcsx_rearmed`: [libretro/pcsx_rearmed](https://github.com/libretro/pcsx_rearmed) `228c14e10e9a8fae0ead8adf30daad2cdd8655b9` | GPL-2.0-or-later | `public/netplay/fceumm.js`, `.wasm`, `supafaust.js`, `.wasm`, `pcsx_rearmed.js`, `.wasm` |
 
 `netplay/`'s own README describes the engine, its messages and its checks.
 
@@ -19,6 +19,7 @@ rebuilt from here. Each release attaches a full-source archive that includes the
 
 | Rombie | `snes/` | `mgba-link/` | `netplay/` |
 | --- | --- | --- | --- |
+| 2026.0.9 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.1` |
 | 2026.0.8 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.0` |
 | 2026.0.7 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | none |
 | 2026.0.0 to 2026.0.6 | none (SNES ran snes9x from jsDelivr) | `rombie-link-cable-engine-2026.0.0` (the same files) | none |
@@ -37,6 +38,17 @@ df3497e4fbf0fe148cec20abd42821fdc1aeb98da4c278bfb60036b1f4e23032  mednafen_supaf
 ```
 3a32363c3b1acb36939b03ca54bdc6cb64f08786fa8c4c0f07d5749d6d5e20f6  mgba-link.wasm
 0247b5c54c732eb1577a0f365e3721b2c6d7c21fd7b187fbba0d438e83352cbe  mgba-link.js
+```
+
+`rombie-netplay-engine-2026.0.1`:
+
+```
+f9b250663b1fac337cc5706865232d66fa7b5c8ec0ac18013ce1e92ed7fa0c3a  fceumm.js
+4db3f049d9349e2ad561f6ec0948957acde99631826153399416f53575ae4043  fceumm.wasm
+fd099696e526627b276629466e68b6731fc53b0f9211153a8f48817d63798224  supafaust.js
+869afb71dc6883c70bcba6575d2ef34768afdcea15be47770528b364a5c3473e  supafaust.wasm
+15bac9a448087418c250ff8897da8d6c0075417e8519e938ffaeb16f2a19fe37  pcsx_rearmed.js
+59dbc9d7d65246eb1917ebfcef18c89b4db6deff055b085f15e6118249aa7439  pcsx_rearmed.wasm
 ```
 
 `rombie-netplay-engine-2026.0.0`:
@@ -90,7 +102,7 @@ docker build -t rombie-netplay netplay
 docker run --rm -v "${PWD}:/repo" rombie-netplay sh /repo/netplay/build.sh
 ```
 
-The output lands in `netplay/out/` with its `SHA256SUMS`, and matches the hashes above byte for byte;
+The output lands in `netplay/out/` with its `SHA256SUMS`, and matches the latest netplay release's hashes above byte for byte;
 `netplay/README.md` has the details.
 
 ## Releases
@@ -118,3 +130,5 @@ under its own license. The files written for this repo (build scripts, Dockerfil
 the license of what they build: GPL-3.0-or-later in `snes/` and at the root, except the Supafaust patch, which
 stays under Supafaust's GPL-2.0-or-later, MPL-2.0 in `mgba-link/`, and GPL-2.0-or-later in `netplay/`, whose engine
 links GPL-2.0-or-later cores. fceumm's own copy of its license, `Copying`, is an older printing of `GPL-2.0.txt`.
+pcsx_rearmed's `COPYING` is GPL-2.0 as well; the BSD-3-Clause and public-domain parts it compiles in are listed in
+`netplay/README.md`.
