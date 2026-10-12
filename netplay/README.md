@@ -24,6 +24,8 @@ Single-threaded, so no `SharedArrayBuffer` and no cross-origin isolation.
 | `build.sh`, `Dockerfile` | The build (see Building) |
 | `test.html` | A check of the engine on its own (see Testing); not shipped |
 | `fceumm/` | The NES core, a submodule pinned to its commit |
+| `supafaust/` | The SNES core, a submodule pinned to its commit |
+| `patches/mednafen_supafaust.patch` | Supafaust's changes for a build with no threads, the same as `snes/patches/` |
 
 ### Messages
 
@@ -68,11 +70,16 @@ fceumm at this commit does this in two places, and neither affects the game:
 - MMC1 (`boards/mmc1.c`): loading a state sets `lreset` (`LRST`) to 0. It only guards against two writes within two
   CPU cycles, which never span a frame.
 
-## The core
+Supafaust is the other way round: it exposes no memory to the frontend but its save RAM, so `memoryHashes` says
+little, while its whole state comes back exactly after a rollback (no mismatches in the five games of the checks
+below). Rombie compares the whole state for SNES.
 
-| Core | Submodule, commit | License |
-| --- | --- | --- |
-| fceumm (NES) | `fceumm`: [libretro/libretro-fceumm](https://github.com/libretro/libretro-fceumm) `5cd4a43e16a7f3cd35628d481c347a0a98cfdfa2` | GPL-2.0-or-later |
+## The cores
+
+| Core | Submodule, commit | License | Built |
+| --- | --- | --- | --- |
+| fceumm (NES) | `fceumm`: [libretro/libretro-fceumm](https://github.com/libretro/libretro-fceumm) `5cd4a43e16a7f3cd35628d481c347a0a98cfdfa2` | GPL-2.0-or-later | `fceumm.js`, `.wasm` |
+| Beetle Supafaust (SNES) | `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` | GPL-2.0-or-later | `supafaust.js`, `.wasm` |
 
 This is the commit libretro's buildbot built for RetroArch 1.22.2 (its core reports "(SVN) 5cd4a43"), which is the
 build Rombie's solo NES runs (Nostalgist's cores come from `arianrhodsandlot/retroarch-emscripten-build@v1.22.2`,
@@ -84,28 +91,36 @@ The core is built the way libretro builds it for Emscripten (`platform=emscripte
 libretro-common's file, memory-stream and string helpers to the frontend, so `build.sh` compiles the core's own copy of
 them into the engine.
 
+Supafaust is the commit Rombie's solo SNES runs, built in `snes/` with the same patch, so a solo SNES game's state
+loads here the same way. It is built as `snes/` builds it (`platform=emscripten`, WebAssembly exceptions, which
+Mednafen uses in ordinary control flow) and linked as C++. Its own `libretro.h` predates calls the frontend handles,
+so the frontend is compiled against fceumm's copy of the header; the libretro interface itself is unchanged. Its
+multitap is a core option (`supafaust_multitap`), which Rombie sets at `load`, as solo play does.
+
 ## Building
 
-From the repo root, with the submodule checked out (`git submodule update --init netplay/fceumm`):
+From the repo root, with the submodules checked out (`git submodule update --init netplay/fceumm netplay/supafaust`):
 
 ```sh
 docker build -t rombie-netplay netplay
 docker run --rm -v "${PWD}:/repo" rombie-netplay sh /repo/netplay/build.sh
 ```
 
-The image is Emscripten 3.1.46, pinned by digest, the same as `snes/`. The output lands in `netplay/out/`,
-`fceumm.js` and `fceumm.wasm`, with their `SHA256SUMS`. Builds are byte for byte the same each time; this source
-builds:
+The image is Emscripten 3.1.46, pinned by digest, the same as `snes/`. The output lands in `netplay/out/`, one
+`.js` and `.wasm` per core, with their `SHA256SUMS`. Builds are byte for byte the same each time; this source builds:
 
 ```
 a880bff0e28a3ffe31b20af67e62b49bae197ed1fbf7aef77df6a2113082d9cb  fceumm.js
 e9ff8cf9b393c8c6842f5c1542da0887844e41c1e3ee72a3df038b49af2a2131  fceumm.wasm
+488644f2db259372cd89ce26fa5452721f71c4a2f9913c6b237375b5ea98134d  supafaust.js
+56d5d486a5f6e7aaceb2b6276f0c4b5054e58cbba2fa92a2cd65633f3053ec09  supafaust.wasm
 ```
 
 ## Testing
 
 `test.html` checks the engine on its own. Serve this folder over HTTP after building (a Worker will not start from
-`file://`), for example `python -m http.server 8642` here, open `http://localhost:8642/test.html`, pick a ROM and run:
+`file://`), for example `python -m http.server 8642` here, open `http://localhost:8642/test.html` (the NES engine;
+`test.html?engine=out/supafaust.js` for SNES), pick a ROM and run:
 
 - **Determinism**: engine A runs scripted two-player input straight; engine B runs the same input the way a guest's
   rollback session does (player 1's input arrives up to 7 frames late, B repeats the last one it knows, then rolls back
@@ -117,9 +132,23 @@ e9ff8cf9b393c8c6842f5c1542da0887844e41c1e3ee72a3df038b49af2a2131  fceumm.wasm
   message round trips.
 - **Solo state**: load a core state taken from a RetroArch save state and play on.
 
+Supafaust, 36,000 frames each (10 minutes of play) with 2,621 rollbacks, on the PC the engine was built on (2026-10-10):
+
+| Game | Frame | State | Stress (8 back, every frame) | Mismatches (picture, whole state) |
+| --- | --- | --- | --- | --- |
+| Super Mario World | 1.4 ms | 268,568 B | 60.0 fps, 68% of the frame | 0, 0 |
+| Star Fox (SuperFX) | 1.6 ms | 299,966 B | 60.0 fps, 73% | 0, 0 |
+| Donkey Kong Country | 1.5 ms | 268,568 B | 59.9 fps, 76% | 0, 0 |
+| Yoshi's Island (SuperFX 2) | 1.8 ms | 299,966 B | 58.6 fps, 80% | 0, 0 |
+| Super Mario RPG (SA-1) | 3.3 ms | 301,609 B | 34.6 fps, 173% | 0, 0 |
+
+An SA-1 game cannot run eight frames again every frame on that PC. Netplay rolls back only when another player's input
+turns out different, and only as far as it arrived late, so this is the worst case rather than the usual one.
+
 ## Licenses
 
-fceumm is GPL-2.0-or-later; its own copy of the license, `Copying`, is in the submodule, and `LICENSES/GPL-2.0.txt`
-holds the same license's text. The files written for this folder (`netplay-main.c`, `netplay-worker.js`, `build.sh`,
-`Dockerfile`, `test.html`, this README) are GPL-2.0-or-later too, since the engine links GPL cores. The
-libretro-common files compiled in from the core's source are MIT, as their headers say.
+fceumm and Supafaust are GPL-2.0-or-later; their own copies of the license (`Copying`, `COPYING`) are in the
+submodules, and `LICENSES/GPL-2.0.txt` holds the same license's text. The files written for this folder
+(`netplay-main.c`, `netplay-worker.js`, `build.sh`, `Dockerfile`, `test.html`, this README) are GPL-2.0-or-later too,
+since the engines link GPL cores, and so is the Supafaust patch. The libretro-common files compiled in from fceumm's
+source are MIT, as their headers say.

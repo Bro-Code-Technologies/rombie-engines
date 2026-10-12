@@ -1,9 +1,9 @@
 #!/bin/sh
-# Builds Rombie's netplay engine: netplay-main.c and netplay-worker.js linked with one libretro
-# core, the files Rombie serves from its public/netplay/. Run from the repo root (see README.md):
+# Builds Rombie's netplay engines: netplay-main.c and netplay-worker.js linked with one libretro
+# core each, the files Rombie serves from its public/netplay/. Run from the repo root (see README.md):
 #   docker build -t rombie-netplay netplay
 #   docker run --rm -v "${PWD}:/repo" rombie-netplay sh /repo/netplay/build.sh
-# Output: netplay/out/fceumm.js and .wasm, and SHA256SUMS.
+# Output: netplay/out/fceumm.js and .wasm (NES), supafaust.js and .wasm (SNES), and SHA256SUMS.
 set -eu
 REPO=/repo
 W=/work
@@ -70,6 +70,29 @@ emcc -O3 \
   --post-js "$W/engine/netplay-worker.js" \
   -o "$W/out/fceumm.js"
 
+# Beetle Supafaust (SNES), the commit and patch Rombie's solo SNES runs (snes/), so a solo game's
+# state loads here. Its own libretro.h predates calls the frontend handles, so the frontend is
+# compiled against fceumm's copy of libretro-common; the libretro interface is the same.
+copy_source netplay/supafaust supafaust
+git -C "$W/supafaust" apply "$REPO/netplay/patches/mednafen_supafaust.patch"
+echo "applied patches/mednafen_supafaust.patch"
+# The Supafaust commit's date (2026-08-23 12:01:03 UTC).
+export SOURCE_DATE_EPOCH=1787486463
+# Mednafen throws and catches C++ exceptions in ordinary control flow, so everything in this link is
+# built with WebAssembly's native exceptions, as in snes/. emcc adds EMCC_CFLAGS to every call.
+export EMCC_CFLAGS=-fwasm-exceptions
+(cd "$W/supafaust" && emmake make -j"$N" platform=emscripten)
+emcc -O3 -I "$LRC/include" -c "$W/engine/netplay-main.c" -o "$W/engine/netplay-main-supafaust.o"
+em++ -O3 \
+  "$W/engine/netplay-main-supafaust.o" "$W/supafaust/mednafen_supafaust_libretro_emscripten.bc" \
+  -sENVIRONMENT=worker \
+  -sALLOW_MEMORY_GROWTH=1 \
+  -sINITIAL_MEMORY=67108864 \
+  -sEXPORTED_FUNCTIONS=_malloc,_free \
+  -sEXPORTED_RUNTIME_METHODS=FS,UTF8ToString,stringToNewUTF8,HEAPU8,HEAP16 \
+  --post-js "$W/engine/netplay-worker.js" \
+  -o "$W/out/supafaust.js"
+
 mkdir -p "$OUT"
-cp "$W/out/fceumm.js" "$W/out/fceumm.wasm" "$OUT/"
-(cd "$OUT" && sha256sum fceumm.js fceumm.wasm | tee SHA256SUMS)
+cp "$W/out/fceumm.js" "$W/out/fceumm.wasm" "$W/out/supafaust.js" "$W/out/supafaust.wasm" "$OUT/"
+(cd "$OUT" && sha256sum fceumm.js fceumm.wasm supafaust.js supafaust.wasm | tee SHA256SUMS)

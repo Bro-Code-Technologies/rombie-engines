@@ -14,3 +14,7 @@
 	path = netplay/fceumm
 	url = https://github.com/libretro/libretro-fceumm.git
 	shallow = true
+[submodule "netplay/supafaust"]
+	path = netplay/supafaust
+	url = https://github.com/libretro/supafaust.git
+	shallow = true

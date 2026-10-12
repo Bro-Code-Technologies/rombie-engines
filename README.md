@@ -11,16 +11,17 @@ rebuilt from here. Each release attaches a full-source archive that includes the
 | --- | --- | --- | --- | --- |
 | `snes/` | RetroArch for Emscripten with Beetle Supafaust, Rombie's SNES emulator | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` | GPL-3.0-or-later (RetroArch) with GPL-2.0-or-later (Supafaust) | `public/cores/mednafen_supafaust_libretro.js`, `.wasm` |
 | `mgba-link/` | mGBA for Rombie's Link Cable engine (two-player link play for Game Boy Color and Game Boy Advance) | `mgba`: [thenick775/mgba](https://github.com/thenick775/mgba) `e974b288bd7e5cfc7c7b96f8b4d32b673ddfb68c` (branch `feature/wasm`) | MPL-2.0 | `public/link-cable/mgba-link.js`, `.wasm` |
-| `netplay/` | Rombie's netplay engine: a libretro frontend of Rombie's own, run in a Web Worker, built with one core per file (NES so far) | `fceumm`: [libretro/libretro-fceumm](https://github.com/libretro/libretro-fceumm) `5cd4a43e16a7f3cd35628d481c347a0a98cfdfa2` | GPL-2.0-or-later | none yet (it will be `public/netplay/`) |
+| `netplay/` | Rombie's netplay engine: a libretro frontend of Rombie's own, run in a Web Worker, built with one core per file (NES and SNES) | `fceumm`: [libretro/libretro-fceumm](https://github.com/libretro/libretro-fceumm) `5cd4a43e16a7f3cd35628d481c347a0a98cfdfa2` · `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` | GPL-2.0-or-later | `public/netplay/fceumm.js`, `.wasm`, `supafaust.js`, `.wasm` |
 
-`netplay/` is not in a Rombie release yet. Its own README describes the engine, its messages and its checks.
+`netplay/`'s own README describes the engine, its messages and its checks.
 
 ## Which Rombie release used what
 
-| Rombie | `snes/` | `mgba-link/` |
-| --- | --- | --- |
-| 2026.0.7 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` |
-| 2026.0.0 to 2026.0.6 | none (SNES ran snes9x from jsDelivr) | `rombie-link-cable-engine-2026.0.0` (the same files) |
+| Rombie | `snes/` | `mgba-link/` | `netplay/` |
+| --- | --- | --- | --- |
+| 2026.0.8 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.0` |
+| 2026.0.7 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | none |
+| 2026.0.0 to 2026.0.6 | none (SNES ran snes9x from jsDelivr) | `rombie-link-cable-engine-2026.0.0` (the same files) | none |
 
 ## The files and their SHA-256
 
@@ -36,6 +37,15 @@ df3497e4fbf0fe148cec20abd42821fdc1aeb98da4c278bfb60036b1f4e23032  mednafen_supaf
 ```
 3a32363c3b1acb36939b03ca54bdc6cb64f08786fa8c4c0f07d5749d6d5e20f6  mgba-link.wasm
 0247b5c54c732eb1577a0f365e3721b2c6d7c21fd7b187fbba0d438e83352cbe  mgba-link.js
+```
+
+`rombie-netplay-engine-2026.0.0`:
+
+```
+a880bff0e28a3ffe31b20af67e62b49bae197ed1fbf7aef77df6a2113082d9cb  fceumm.js
+e9ff8cf9b393c8c6842f5c1542da0887844e41c1e3ee72a3df038b49af2a2131  fceumm.wasm
+488644f2db259372cd89ce26fa5452721f71c4a2f9913c6b237375b5ea98134d  supafaust.js
+56d5d486a5f6e7aaceb2b6276f0c4b5054e58cbba2fa92a2cd65633f3053ec09  supafaust.wasm
 ```
 
 ## Building
@@ -80,13 +90,15 @@ docker build -t rombie-netplay netplay
 docker run --rm -v "${PWD}:/repo" rombie-netplay sh /repo/netplay/build.sh
 ```
 
-The output lands in `netplay/out/` with its `SHA256SUMS`; `netplay/README.md` has the details.
+The output lands in `netplay/out/` with its `SHA256SUMS`, and matches the hashes above byte for byte;
+`netplay/README.md` has the details.
 
 ## Releases
 
 Each engine is released on its own, named like Rombie's PS2 engine: tag `rombie-<engine>-engine-<version>`
-(`rombie-snes-engine-2026.0.0` for `snes/`, `rombie-link-cable-engine-2026.0.0` for `mgba-link/`), release name
-"Rombie SNES Engine 2026.0.0" or "Rombie Link Cable Engine 2026.0.0". Versions are year-based (`YYYY.N.patch`).
+(`rombie-snes-engine-2026.0.0` for `snes/`, `rombie-link-cable-engine-2026.0.0` for `mgba-link/`,
+`rombie-netplay-engine-2026.0.0` for `netplay/`), release name "Rombie SNES Engine 2026.0.0", "Rombie Link Cable
+Engine 2026.0.0" or "Rombie Netplay Engine 2026.0.0". Versions are year-based (`YYYY.N.patch`).
 Each release attaches the full-source archive that `make-source-archive.sh` makes: this repo's files for that
 folder at the tag, plus its submodules at the pinned commits.
 
@@ -94,8 +106,8 @@ folder at the tag, plus its submodules at the pinned commits.
 docker run --rm -v "${PWD}:/repo" -w /repo rombie-snes sh make-source-archive.sh snes rombie-snes-engine-2026.0.0
 ```
 
-The build scripts also build from an extracted source archive. The SNES build then matches the hashes above as
-well. mGBA's version stamp needs git, so a build from an archive stamps "(unknown)" and its wasm is not byte for
+The build scripts also build from an extracted source archive. The SNES and netplay builds then match the hashes
+above as well. mGBA's version stamp needs git, so a build from an archive stamps "(unknown)" and its wasm is not byte for
 byte the shipped one.
 
 ## Licenses
