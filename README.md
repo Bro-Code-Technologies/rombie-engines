@@ -193,8 +193,9 @@ byte the shipped one.
 ## Licenses
 
 `LICENSES/` holds the full texts: `GPL-3.0.txt` (RetroArch's `COPYING`), `GPL-2.0.txt` (Supafaust's `COPYING`),
-`MPL-2.0.txt` (mGBA's `LICENSE`), `AGPL-3.0.txt` (ClownMDEmu's `LICENCE.txt`) and `emu2413-MIT.txt` (emu2413's `LICENSE`), each
-copied from the project at the pinned commit (Gearsystem's own `LICENSE` is the same text as `GPL-3.0.txt`). Every upstream project stays under its own license. The files written for this repo (build scripts,
+`MPL-2.0.txt` (mGBA's `LICENSE`), `AGPL-3.0.txt` (ClownMDEmu's `LICENCE.txt`) `emu2413-MIT.txt` (emu2413's `LICENSE`) and `LGPL-2.1.txt` (the text Blip_Buffer and Sms_Snd_Emu's headers refer to, which Gearsystem
+does not carry; it is the SPDX License List's `LGPL-2.1-only` text), each
+copied from the project at the pinned commit where it has one (Gearsystem's own `LICENSE` is the same text as `GPL-3.0.txt`). Every upstream project stays under its own license. The files written for this repo (build scripts,
 Dockerfile, patches, this README) are under the license of what they build: GPL-3.0-or-later in `snes/` and at the
 root, except the Supafaust patch, which stays under Supafaust's GPL-2.0-or-later, MPL-2.0 in `mgba-link/`,
 GPL-2.0-or-later in `netplay/`, whose engine links GPL-2.0-or-later cores, and GPL-3.0-or-later in `clownmdemu/`
@@ -202,7 +203,7 @@ GPL-2.0-or-later in `netplay/`, whose engine links GPL-2.0-or-later cores, and G
 their own licenses, listed with their commits in `.docs/licenses.md` of Rombie and here: clown68000 and clownz80
 (AGPL-3.0, with the core), clowncommon, clownresampler and clowncd (0BSD), libchdr (BSD-3-Clause) with its LZMA SDK
 (public domain), miniz (MIT) and Zstandard decoder (BSD-3-Clause), and libretro-common's headers (MIT). The Gearsystem build compiles in, under their own licenses: Blip_Buffer 0.4.1 and
-Sms_Snd_Emu 0.1.4 (LGPL-2.1-or-later), Stereo_Buffer 0.3.0 (GPL-2.0-or-later), miniz 11.3.2 (MIT, with public-domain
-parts), emu2413 1.6.2 (MIT) and `libretro.h` (MIT). fceumm's own copy of its license, `Copying`, is an older printing of `GPL-2.0.txt`.
+Sms_Snd_Emu 0.1.4 (LGPL-2.1-or-later), Stereo_Buffer 0.3.0 (GPL-2.0-or-later), miniz 3.1.2 (MIT, with public-domain
+parts; its zlib-compatible `MZ_VERSION` string reads 11.3.2), emu2413 1.6.2 (MIT) and `libretro.h` (MIT). fceumm's own copy of its license, `Copying`, is an older printing of `GPL-2.0.txt`.
 pcsx_rearmed's `COPYING` is GPL-2.0 as well; the BSD-3-Clause and public-domain parts it compiles in are listed in
 `netplay/README.md`.
