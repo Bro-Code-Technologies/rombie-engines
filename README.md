@@ -35,14 +35,14 @@ f2d072805fd51de3fd2115e2d0036df99ae5567805b884ed222ad086690c370a  mednafen_supaf
 df3497e4fbf0fe148cec20abd42821fdc1aeb98da4c278bfb60036b1f4e23032  mednafen_supafaust_libretro.js
 ```
 
-`rombie-gearsystem-engine-2026.0.0` (built and reproduced; not released yet):
+`rombie-gearsystem-engine-2026.0.0`:
 
 ```
 b0872cb32396675eefad5d4917e33247319e1f1f44ae4f1a787cface4e9fe6c8  gearsystem_libretro.js
 a037b6950ceeb6edeb1b2bedbac8057ab9bce94727534d257baa68402423107d  gearsystem_libretro.wasm
 ```
 
-`rombie-clownmdemu-engine-2026.0.0` (built and reproduced; not released yet):
+`rombie-clownmdemu-engine-2026.0.0`:
 
 ```
 a8f0a858a30e2b7fd13d439b922f1f0eeff412b32249321134ba201d4146f6ba  ClownMDEmu_libretro.js
