@@ -22,3 +22,23 @@
 	path = netplay/pcsx_rearmed
 	url = https://github.com/libretro/pcsx_rearmed.git
 	shallow = true
+[submodule "clownmdemu/RetroArch"]
+	path = clownmdemu/RetroArch
+	url = https://github.com/libretro/RetroArch.git
+	shallow = true
+[submodule "clownmdemu/clownmdemu-libretro"]
+	path = clownmdemu/clownmdemu-libretro
+	url = https://github.com/Clownacy/clownmdemu-libretro.git
+	shallow = true
+[submodule "gearsystem/RetroArch"]
+	path = gearsystem/RetroArch
+	url = https://github.com/libretro/RetroArch.git
+	shallow = true
+[submodule "gearsystem/Gearsystem"]
+	path = gearsystem/Gearsystem
+	url = https://github.com/drhelius/Gearsystem.git
+	shallow = true
+[submodule "gearsystem/emu2413"]
+	path = gearsystem/emu2413
+	url = https://github.com/digital-sound-antiques/emu2413.git
+	shallow = true

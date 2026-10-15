@@ -12,17 +12,19 @@ rebuilt from here. Each release attaches a full-source archive that includes the
 | `snes/` | RetroArch for Emscripten with Beetle Supafaust, Rombie's SNES emulator | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` | GPL-3.0-or-later (RetroArch) with GPL-2.0-or-later (Supafaust) | `public/cores/mednafen_supafaust_libretro.js`, `.wasm` |
 | `mgba-link/` | mGBA for Rombie's Link Cable engine (two-player link play for Game Boy Color and Game Boy Advance) | `mgba`: [thenick775/mgba](https://github.com/thenick775/mgba) `e974b288bd7e5cfc7c7b96f8b4d32b673ddfb68c` (branch `feature/wasm`) | MPL-2.0 | `public/link-cable/mgba-link.js`, `.wasm` |
 | `netplay/` | Rombie's netplay engine: a libretro frontend of Rombie's own, run in a Web Worker, built with one core per file (NES, SNES and PS1) | `fceumm`: [libretro/libretro-fceumm](https://github.com/libretro/libretro-fceumm) `5cd4a43e16a7f3cd35628d481c347a0a98cfdfa2` · `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` · `pcsx_rearmed`: [libretro/pcsx_rearmed](https://github.com/libretro/pcsx_rearmed) `228c14e10e9a8fae0ead8adf30daad2cdd8655b9` | GPL-2.0-or-later | `public/netplay/fceumm.js`, `.wasm`, `supafaust.js`, `.wasm`, `pcsx_rearmed.js`, `.wasm` |
+| `clownmdemu/` | RetroArch for Emscripten with ClownMDEmu, Rombie's Sega Genesis and Sega CD emulator | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `clownmdemu-libretro`: [Clownacy/clownmdemu-libretro](https://github.com/Clownacy/clownmdemu-libretro) `f8395036544d806ebc68fd110a5621c49991a91d` (v1.6.12), with its own submodules | GPL-3.0-or-later (RetroArch) with AGPL-3.0-or-later (ClownMDEmu) | `public/cores/ClownMDEmu_libretro.js`, `.wasm` |
+| `gearsystem/` | RetroArch for Emscripten with Gearsystem, Rombie's Sega Master System and Game Gear emulator, built without the one file of Gearsystem's that comes from Genesis Plus GX (its YM2413 FM chip), which Rombie's copy replaces with Okazaki's emu2413 | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `Gearsystem`: [drhelius/Gearsystem](https://github.com/drhelius/Gearsystem) `517ddaaafbab1af7a312c2b6b6f6043275f58500` (3.9.22) · `emu2413`: [digital-sound-antiques/emu2413](https://github.com/digital-sound-antiques/emu2413) `2e4f6f9752f43cc33572c6636ca31a647600732c` (1.6.2) | GPL-3.0-or-later (RetroArch, Gearsystem and this repo's replacement files) with MIT (emu2413) | `public/cores/gearsystem_libretro.js`, `.wasm` |
 
 `netplay/`'s own README describes the engine, its messages and its checks.
 
 ## Which Rombie release used what
 
-| Rombie | `snes/` | `mgba-link/` | `netplay/` |
-| --- | --- | --- | --- |
-| 2026.0.9 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.1` |
-| 2026.0.8 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.0` |
-| 2026.0.7 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | none |
-| 2026.0.0 to 2026.0.6 | none (SNES ran snes9x from jsDelivr) | `rombie-link-cable-engine-2026.0.0` (the same files) | none |
+| Rombie | `snes/` | `mgba-link/` | `netplay/` | `clownmdemu/` | `gearsystem/` |
+| --- | --- | --- | --- | --- | --- |
+| 2026.0.9 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.1` | none | none |
+| 2026.0.8 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.0` | none | none |
+| 2026.0.7 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | none | none | none |
+| 2026.0.0 to 2026.0.6 | none (SNES ran snes9x from jsDelivr) | `rombie-link-cable-engine-2026.0.0` (the same files) | none | none | none |
 
 ## The files and their SHA-256
 
@@ -31,6 +33,20 @@ rebuilt from here. Each release attaches a full-source archive that includes the
 ```
 f2d072805fd51de3fd2115e2d0036df99ae5567805b884ed222ad086690c370a  mednafen_supafaust_libretro.wasm
 df3497e4fbf0fe148cec20abd42821fdc1aeb98da4c278bfb60036b1f4e23032  mednafen_supafaust_libretro.js
+```
+
+`rombie-gearsystem-engine-2026.0.0` (built and reproduced; not released yet):
+
+```
+b0872cb32396675eefad5d4917e33247319e1f1f44ae4f1a787cface4e9fe6c8  gearsystem_libretro.js
+a037b6950ceeb6edeb1b2bedbac8057ab9bce94727534d257baa68402423107d  gearsystem_libretro.wasm
+```
+
+`rombie-clownmdemu-engine-2026.0.0` (built and reproduced; not released yet):
+
+```
+a8f0a858a30e2b7fd13d439b922f1f0eeff412b32249321134ba201d4146f6ba  ClownMDEmu_libretro.js
+9844924a793d705542e440d96cdd0241631016a74cb9c172de8bd3ebc8a9197f  ClownMDEmu_libretro.wasm
 ```
 
 `rombie-link-cable-engine-2026.0.0`:
@@ -82,6 +98,56 @@ Emscripten 3.1.46, with:
   and catches in ordinary control flow;
 - RetroArch without 7-Zip support (`HAVE_7ZIP=0`), since Rombie only hands it `.sfc` and `.smc` files.
 
+**Sega Genesis and Sega CD (ClownMDEmu)**
+
+```sh
+git submodule update --init clownmdemu/RetroArch clownmdemu/clownmdemu-libretro
+git -C clownmdemu/clownmdemu-libretro submodule update --init --recursive
+docker build -t rombie-clownmdemu clownmdemu
+docker run --rm -v "${PWD}:/repo" rombie-clownmdemu sh /repo/clownmdemu/build.sh
+```
+
+The second command is needed because ClownMDEmu's own repo nests its libraries (its emulation core, the CD reader
+and libchdr, and libretro-common) several levels deep; `make-source-archive.sh` includes all of them. The output
+lands in `clownmdemu/out/` with its `SHA256SUMS`, and matches the hashes above byte for byte (a second run from a clean
+checkout gave the same files). The build follows libretro's own recipe (the core with `platform=emscripten`, linked by
+RetroArch's `Makefile.emscripten`) in the same Emscripten 3.1.46 image as `snes/`, with:
+
+- no patch to ClownMDEmu: it is built exactly as its repo has it at the pinned commit;
+- the output named `ClownMDEmu`, the core's own library name (`LIBRETRO=ClownMDEmu`), so that RetroArch's save and
+  save-state folders (named for the library) are the ones Nostalgist looks in when Rombie gives it the same name;
+- RetroArch without 7-Zip support (`HAVE_7ZIP=0`), since Rombie only hands it a game's own `.md`, `.gen`, `.bin`,
+  `.cue`, `.iso` or `.chd` files.
+
+The core has its own Mega CD boot ROM (`mega-cd-boot-rom.c`, built from
+[kirisamemofo/clownmdemu-mcd-boot](https://github.com/kirisamemofo/clownmdemu-mcd-boot), 0BSD), so Sega CD discs need
+no BIOS file.
+
+**Sega Master System and Game Gear (Gearsystem)**
+
+```sh
+git submodule update --init gearsystem/RetroArch gearsystem/Gearsystem gearsystem/emu2413
+docker build -t rombie-gearsystem gearsystem
+docker run --rm -v "${PWD}:/repo" rombie-gearsystem sh /repo/gearsystem/build.sh
+```
+
+The output lands in `gearsystem/out/` with its `SHA256SUMS`, and matches the hashes above byte for byte (a second run gave
+the same files). The build follows libretro's own recipe (the core with `platform=emscripten`, linked by RetroArch's
+`Makefile.emscripten`) in the same Emscripten 3.1.46 image as `snes/`, with:
+
+- one file of Gearsystem's replaced: `src/audio/emu2413/emu2413.c` and `.h` are Genesis Plus GX's `ym2413.c` (Jarek
+  Burczynski's YM2413, modified by Eke-Eke) carried across, and Genesis Plus GX's license says its code "may not be sold, nor
+  may [it] be used in a commercial product or activity". `overlay/src/audio/emu2413/emu2413.c` and `.h` take its place,
+  presenting the same functions `YM2413.cpp` calls over Mitsutaka Okazaki's emu2413 (MIT, the `emu2413/` submodule),
+  and `build.sh` copies them in. Gearsystem's `YM2413.cpp` and everything else are used as they are;
+- the replacement's output scaled by two, which matched the replaced file's level on a one-note test ROM (peak 0.0876
+  against 0.0438 unscaled; `GEARSYSTEM_STOCK=1` builds Gearsystem as it is, into `gearsystem/out-stock/`, for that
+  comparison; it is never served);
+- RetroArch without 7-Zip support (`HAVE_7ZIP=0`), since Rombie only hands it a game's own `.sms` or `.gg` file.
+
+Save states carry the chip's state: emu2413's own state holds pointers into itself, so `emu2413.c` hands Gearsystem a
+copy and applies what Gearsystem writes back to it (through emu2413's `OPLL_load_state`) before the chip is next used.
+
 **Link Cable's mGBA**
 
 ```sh
@@ -109,8 +175,10 @@ The output lands in `netplay/out/` with its `SHA256SUMS`, and matches the latest
 
 Each engine is released on its own, named like Rombie's PS2 engine: tag `rombie-<engine>-engine-<version>`
 (`rombie-snes-engine-2026.0.0` for `snes/`, `rombie-link-cable-engine-2026.0.0` for `mgba-link/`,
-`rombie-netplay-engine-2026.0.0` for `netplay/`), release name "Rombie SNES Engine 2026.0.0", "Rombie Link Cable
-Engine 2026.0.0" or "Rombie Netplay Engine 2026.0.0". Versions are year-based (`YYYY.N.patch`).
+`rombie-netplay-engine-2026.0.0` for `netplay/`, `rombie-clownmdemu-engine-2026.0.0` for `clownmdemu/`,
+`rombie-gearsystem-engine-2026.0.0` for `gearsystem/`), release name "Rombie SNES Engine 2026.0.0", "Rombie Link Cable
+Engine 2026.0.0", "Rombie Netplay Engine 2026.0.0", "Rombie ClownMDEmu Engine 2026.0.0" or "Rombie Gearsystem Engine
+2026.0.0". Versions are year-based (`YYYY.N.patch`).
 Each release attaches the full-source archive that `make-source-archive.sh` makes: this repo's files for that
 folder at the tag, plus its submodules at the pinned commits.
 
@@ -124,11 +192,17 @@ byte the shipped one.
 
 ## Licenses
 
-`LICENSES/` holds the full texts: `GPL-3.0.txt` (RetroArch's `COPYING`), `GPL-2.0.txt` (Supafaust's `COPYING`) and
-`MPL-2.0.txt` (mGBA's `LICENSE`), each copied from the project at the pinned commit. Every upstream project stays
-under its own license. The files written for this repo (build scripts, Dockerfile, patches, this README) are under
-the license of what they build: GPL-3.0-or-later in `snes/` and at the root, except the Supafaust patch, which
-stays under Supafaust's GPL-2.0-or-later, MPL-2.0 in `mgba-link/`, and GPL-2.0-or-later in `netplay/`, whose engine
-links GPL-2.0-or-later cores. fceumm's own copy of its license, `Copying`, is an older printing of `GPL-2.0.txt`.
+`LICENSES/` holds the full texts: `GPL-3.0.txt` (RetroArch's `COPYING`), `GPL-2.0.txt` (Supafaust's `COPYING`),
+`MPL-2.0.txt` (mGBA's `LICENSE`), `AGPL-3.0.txt` (ClownMDEmu's `LICENCE.txt`) and `emu2413-MIT.txt` (emu2413's `LICENSE`), each
+copied from the project at the pinned commit (Gearsystem's own `LICENSE` is the same text as `GPL-3.0.txt`). Every upstream project stays under its own license. The files written for this repo (build scripts,
+Dockerfile, patches, this README) are under the license of what they build: GPL-3.0-or-later in `snes/` and at the
+root, except the Supafaust patch, which stays under Supafaust's GPL-2.0-or-later, MPL-2.0 in `mgba-link/`,
+GPL-2.0-or-later in `netplay/`, whose engine links GPL-2.0-or-later cores, and GPL-3.0-or-later in `clownmdemu/`
+(RetroArch's), beside the AGPL-3.0-or-later ClownMDEmu it builds. The ClownMDEmu build also compiles in libraries under
+their own licenses, listed with their commits in `.docs/licenses.md` of Rombie and here: clown68000 and clownz80
+(AGPL-3.0, with the core), clowncommon, clownresampler and clowncd (0BSD), libchdr (BSD-3-Clause) with its LZMA SDK
+(public domain), miniz (MIT) and Zstandard decoder (BSD-3-Clause), and libretro-common's headers (MIT). The Gearsystem build compiles in, under their own licenses: Blip_Buffer 0.4.1 and
+Sms_Snd_Emu 0.1.4 (LGPL-2.1-or-later), Stereo_Buffer 0.3.0 (GPL-2.0-or-later), miniz 11.3.2 (MIT, with public-domain
+parts), emu2413 1.6.2 (MIT) and `libretro.h` (MIT). fceumm's own copy of its license, `Copying`, is an older printing of `GPL-2.0.txt`.
 pcsx_rearmed's `COPYING` is GPL-2.0 as well; the BSD-3-Clause and public-domain parts it compiles in are listed in
 `netplay/README.md`.

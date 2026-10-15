@@ -2,3 +2,6 @@ snes/out/
 mgba-link/out/
 *-source.tar.gz
 netplay/out/
+clownmdemu/out/
+gearsystem/out/
+gearsystem/out-stock/
