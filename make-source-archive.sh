@@ -10,12 +10,18 @@ name=$tag
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# Adds a submodule at the commit its parent pins, then the submodules inside it the same way (clownmdemu's
-# core has several, nested four deep; the other folders' submodules have none that the builds use).
+# Adds a submodule at the commit its parent pins. Inside ClownMDEmu's libretro core it then adds the submodules nested
+# in it the same way (its emulation core and libraries, four deep), which the builds compile. Other submodules' own
+# submodules are left out, as the builds do not use them (pcsx_rearmed's gnulib and libpicofe, which a checkout has
+# empty).
 add_submodule() { # path sha
-  git -C "$1" cat-file -e "$2^{commit}" 2>/dev/null || { echo "$1 does not have $2 (git submodule update --init, and --recursive inside clownmdemu/clownmdemu-libretro)"; exit 1; }
+  git -C "$1" cat-file -e "$2^{commit}" 2>/dev/null || { echo "$1 does not have $2 (git submodule update --init, and --recursive inside a clownmdemu-libretro folder)"; exit 1; }
   git -C "$1" -c core.autocrlf=false archive --prefix="$name/$1/" "$2" | tar -x -C "$tmp"
   echo "$1 at $2"
+  case "$1" in
+    */clownmdemu-libretro | */clownmdemu-libretro/*) ;;
+    *) return 0 ;;
+  esac
   list="$tmp/nested-$(echo "$1" | tr '/' '_')"
   git -C "$1" ls-tree -r "$2" | awk '$2 == "commit" {print $3, $4}' > "$list"
   while read -r nested_sha nested_path; do
