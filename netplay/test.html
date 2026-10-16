@@ -35,6 +35,11 @@
   ?engine=out/supafaust.js or ?engine=out/pcsx_rearmed.js picks another engine. For a disc game,
   pick all of its files at once (a .cue and its .bin files, or one .chd); the .cue is loaded.
   A BIOS goes into the core's system folder under the name it is picked with.
+  ?engine=out/gearsystem.js runs a Game Gear game's link: both consoles in the one core, engine A showing and
+  playing console 1 and engine B console 2, as the two PCs of a session do (the core options at `load`:
+  gearsystem_link_enable, gearsystem_link_screen, gearsystem_link_audio). Its scripted inputs press Start, Down
+  and button 1 on both pads to reach a game's link mode (Super Space Invaders' LINK GAME), then play.
+  ?options=key=value;key=value gives both engines those core options instead, and ?optionsB= adds to B's.
 -->
 <h1>Netplay engine check</h1>
 <fieldset>
@@ -54,13 +59,28 @@
 <button id="runTimings">Timings</button>
 <button id="runStress">Stress</button>
 <button id="runSolo">Solo state</button>
+<button id="runSram">Save RAM</button>
 <div id="screens">
   <figure><canvas id="canvasA" width="256" height="240"></canvas><figcaption>A</figcaption></figure>
   <figure><canvas id="canvasB" width="256" height="240"></canvas><figcaption>B (rolls back)</figcaption></figure>
 </div>
 <div id="log"></div>
 <script type="module">
-const ENGINE_URL = new URLSearchParams(location.search).get('engine') || 'out/fceumm.js'
+const PARAMS = new URLSearchParams(location.search)
+const ENGINE_URL = PARAMS.get('engine') || 'out/fceumm.js'
+const GEARSYSTEM = /gearsystem/.test(ENGINE_URL)
+const parseOptions = (text) => Object.fromEntries((text || '').split(';').filter(Boolean).map((pair) => {
+  const at = pair.indexOf('=')
+  return [pair.slice(0, at), pair.slice(at + 1)]
+}))
+// What the two PCs of a Game Gear link session set: the link on, and each its own console's screen and sound.
+const OPTIONS_A = PARAMS.has('options')
+  ? parseOptions(PARAMS.get('options'))
+  : GEARSYSTEM ? { gearsystem_link_enable: 'Enabled', gearsystem_link_screen: 'Screen 1', gearsystem_link_audio: 'Screen 1' } : {}
+const OPTIONS_B = {
+  ...(PARAMS.has('options') || !GEARSYSTEM ? OPTIONS_A : { ...OPTIONS_A, gearsystem_link_screen: 'Screen 2', gearsystem_link_audio: 'Screen 2' }),
+  ...parseOptions(PARAMS.get('optionsB')),
+}
 const PORTS = 4
 const VALUES_PER_FRAME = PORTS * 5
 const FRAME_MS = 1000 / 60
@@ -119,11 +139,11 @@ async function readRom() {
   }
 }
 
-async function startEngine(rom) {
+async function startEngine(rom, options = OPTIONS_A) {
   const engine = new Engine()
   const system = rom.system.map((file) => ({ name: file.name, data: file.data.slice(0) }))
   const game = rom.files ? { files: rom.files } : { rom: rom.bytes.slice(0) }
-  const info = await engine.request({ type: 'load', name: rom.name, system, ...game })
+  const info = await engine.request({ type: 'load', name: rom.name, system, options, ...game })
   return { engine, info }
 }
 
@@ -163,6 +183,13 @@ function scriptedInputs(frames, seed) {
       }
       let buttons = held
       if ((f % 600 < 6 || (f % 600 >= 30 && f % 600 < 36)) && port === 0) buttons |= 1 << JOYPAD.START
+      if (GEARSYSTEM && port < 2) {
+        // Into a game's link mode first, both players choosing it, with nothing else pressed on the way.
+        buttons = f < 600 ? 0 : buttons
+        for (const [at, bit] of [[200, JOYPAD.START], [320, JOYPAD.DOWN], [400, JOYPAD.B]]) {
+          if (f >= at && f < at + 6) buttons = 1 << bit
+        }
+      }
       values[f * VALUES_PER_FRAME + port * 5] = buttons
     }
   }
@@ -210,7 +237,7 @@ async function runDeterminism(rom) {
     const other = scriptedInputs(frames, 23)
     for (let f = frames >> 1; f < frames; f++) truthB[f * VALUES_PER_FRAME] = other[f * VALUES_PER_FRAME]
   }
-  const [a, b] = await Promise.all([startEngine(rom), startEngine(rom)])
+  const [a, b] = await Promise.all([startEngine(rom, OPTIONS_A), startEngine(rom, OPTIONS_B)])
   log(`determinism: ${frames} frames (${(frames / 60 / 60).toFixed(1)} min of play), ${realtime ? 'real time' : 'as fast as the engines go'}; ${a.info.library}, state ${a.info.stateSize} bytes`)
 
   const hashA = new Uint32Array(frames)
@@ -318,7 +345,7 @@ async function runDeterminism(rom) {
   const seconds = (performance.now() - started) / 1000
   const ok = control ? memory.count > 0 && picture.count > 0 : memory.count === 0 && picture.count === 0
   const said = (c) => `${c.count}${c.first >= 0 ? ` (first at frame ${c.first})` : ''}`
-  log(`determinism${control ? ' CONTROL (expected to fail)' : ''}: mismatches in ${frames} frames: game memory ${said(memory)}, picture ${said(picture)}; whole saved state ${said(state)}, final states ${finalSame ? 'identical' : `different in ${stateParts.join(', ')}`}; B rolled back ${rollbacks} times and ran ${rerun} frames again; ${seconds.toFixed(1)} s`, ok ? 'ok' : 'bad')
+  log(`determinism${control ? ' CONTROL (expected to fail)' : ''}: mismatches in ${frames} frames: game memory ${said(memory)}, picture ${said(picture)}; whole saved state ${said(state)}, final states ${finalSame ? 'identical' : `different in ${stateParts.join(', ')}`}; B rolled back ${rollbacks} times and ran ${rerun} frames again; ${new Set(picA).size} different pictures drawn; ${seconds.toFixed(1)} s`, ok ? 'ok' : 'bad')
   a.engine.close()
   b.engine.close()
   return { control, frames, memory, picture, state, finalSame, stateParts, rollbacks, rerun, seconds, stateSize: a.info.stateSize, library: a.info.library }
@@ -334,6 +361,37 @@ async function runTimings(rom) {
   const fmt = (ms) => `${(ms * 1000).toFixed(0)} us`
   log(`timings (inside the engine, 1000 each): save ${fmt(bench.serializeMs)}, load ${fmt(bench.unserializeMs)}, frame ${fmt(bench.frameMs)}; state ${bench.stateSize} bytes`, 'ok')
   return { library: info.library, ...bench }
+}
+
+// The core's save RAM through sramGet and sramSet, by libretro memory id: 0 (the console's), or for a Game Gear link
+// its two consoles', 0x100 and 0x200, each written a different pattern and read back to see neither aliases the
+// other.
+async function runSram(rom) {
+  const { engine, info } = await startEngine(rom)
+  // 0 is the first console's again in a link, so it is not written separately.
+  const ids = GEARSYSTEM ? [0x100, 0x200] : [0]
+  const out = { library: info.library, ids: {} }
+  for (const id of ids) {
+    const got = await engine.request({ type: 'sramGet', memory: id })
+    out.ids[id] = { size: got.data ? got.data.byteLength : 0 }
+  }
+  let ok = true
+  for (const [n, id] of ids.entries()) {
+    const size = out.ids[id].size
+    if (!size) continue
+    const pattern = new Uint8Array(size).fill(0x11 * (n + 1))
+    await engine.request({ type: 'sramSet', memory: id, data: pattern.buffer })
+  }
+  for (const [n, id] of ids.entries()) {
+    const size = out.ids[id].size
+    if (!size) continue
+    const got = new Uint8Array((await engine.request({ type: 'sramGet', memory: id })).data)
+    out.ids[id].roundTrip = got.every((v) => v === 0x11 * (n + 1))
+    ok = ok && out.ids[id].roundTrip
+  }
+  engine.close()
+  log(`save RAM by memory id: ${ids.map((id) => `0x${id.toString(16)} ${out.ids[id].size ? `${out.ids[id].size} bytes, ${out.ids[id].roundTrip ? 'round trip ok' : 'ROUND TRIP FAILED'}` : 'none'}`).join('; ')}`, ok ? 'ok' : 'bad')
+  return out
 }
 
 async function runStress(rom) {
@@ -428,6 +486,7 @@ async function run(which) {
   try {
     const rom = await readRom()
     log(`rom ${rom.name} (${rom.size} bytes${rom.files ? `, ${rom.files.length} files mounted` : ''}${rom.system.length ? `, BIOS ${rom.system[0].name}` : ''}), engine ${ENGINE_URL}`)
+    if (which === 'all' || which === 'sram') results.sram = await runSram(rom)
     if (which === 'all' || which === 'timings') results.timings = await runTimings(rom)
     if (which === 'all' || which === 'solo') results.solo = await runSolo(rom)
     if (which === 'all' || which === 'stress') results.stress = await runStress(rom)
@@ -446,6 +505,7 @@ $('runDeterminism').onclick = () => run('determinism')
 $('runTimings').onclick = () => run('timings')
 $('runStress').onclick = () => run('stress')
 $('runSolo').onclick = () => run('solo')
+$('runSram').onclick = () => run('sram')
 globalThis.netplaySpikeRun = run
 </script>
 </body>

@@ -90,7 +90,7 @@
         baseHeight: _np_base_height(),
         aspectRatio: _np_aspect_ratio(),
         stateSize: _np_state_size(),
-        sramSize: _np_sram_size(),
+        sramSize: _np_sram_size(0),
         frame: _np_frame_number(),
       }
     },
@@ -161,17 +161,21 @@
       return { type: 'stateLoaded', frame: _np_frame_number() }
     },
 
-    sramGet() {
-      const size = _np_sram_size()
-      const data = size ? copyOut(_np_sram_data(), size) : null
+    // `memory` is a libretro memory id, RETRO_MEMORY_SAVE_RAM (0) when absent (`id` is the request's own): Gearsystem's
+    // link also has its two consoles' save RAM as 0x100 and 0x200.
+    sramGet(msg) {
+      const id = msg.memory ?? 0
+      const size = _np_sram_size(id)
+      const data = size ? copyOut(_np_sram_data(id), size) : null
       return [{ type: 'sram', data }, data ? [data] : []]
     },
 
     sramSet(msg) {
-      const size = _np_sram_size()
+      const id = msg.memory ?? 0
+      const size = _np_sram_size(id)
       const bytes = new Uint8Array(msg.sram || msg.data)
       if (!size) return { type: 'sramSet', written: 0 }
-      HEAPU8.set(bytes.subarray(0, size), _np_sram_data())
+      HEAPU8.set(bytes.subarray(0, size), _np_sram_data(id))
       return { type: 'sramSet', written: Math.min(size, bytes.length) }
     },
 

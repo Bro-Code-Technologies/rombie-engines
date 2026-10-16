@@ -26,6 +26,9 @@ Single-threaded, so no `SharedArrayBuffer` and no cross-origin isolation.
 | `fceumm/` | The NES core, a submodule pinned to its commit |
 | `supafaust/` | The SNES core, a submodule pinned to its commit |
 | `pcsx_rearmed/` | The PS1 core, a submodule pinned to its commit |
+| `gearsystem/` | The Master System and Game Gear core, a submodule pinned to its commit |
+| `emu2413/` | Okazaki's YM2413 emulator, a submodule pinned to its commit, which Gearsystem is built with in place of the one file it has from Genesis Plus GX |
+| `overlay/` | The two files that stand in for Gearsystem's `src/audio/emu2413/emu2413.c` and `.h` (see The cores) |
 | `patches/mednafen_supafaust.patch` | Supafaust's changes for a build with no threads, the same as `snes/patches/` |
 | `patches/pcsx_rearmed.patch` | pcsx_rearmed's changes so a loaded state runs on exactly as the saved one would (see The cores) |
 
@@ -42,8 +45,8 @@ order; the engine posts `{ type: 'ready' }` when it is up.
 | `checksum { frame }` | `checksum { frame, hash }`: the hash of the state before `frame`, or `null` when the ring no longer holds it |
 | `save` | `state { frame, data }`: the full state, which is the state before `frame` |
 | `loadState { data, frame }` | `stateLoaded { frame }`: the state becomes the state before `frame`, and the ring starts over |
-| `sramGet` | `sram { data }` (`null` when the game has none) |
-| `sramSet { data }` | `sramSet { written }` |
+| `sramGet { memory? }` | `sram { data }` (`null` when the game has none) |
+| `sramSet { data, memory? }` | `sramSet { written }` |
 | `options { options }` | `options` |
 | `device { port, device }` | `device` |
 | `reset` | `reset { frame }` |
@@ -51,6 +54,9 @@ order; the engine posts `{ type: 'ready' }` when it is up.
 | `unload` | `unloaded` |
 
 Buffers in replies are transferred, not copied.
+
+**Save RAM.** `memory` is a libretro memory id, `RETRO_MEMORY_SAVE_RAM` (0) when absent. Gearsystem with its link on
+runs two consoles, whose save RAM are `0x100` and `0x200` (0 is the first console's too); every other core has the one.
 
 **Inputs.** `inputs` is an `Int16Array` buffer of 20 values per frame: for each of four ports, the buttons as
 libretro's joypad bitmask (bit `RETRO_DEVICE_ID_JOYPAD_*`: B 0, Y 1, Select 2, Start 3, Up 4, Down 5, Left 6,
@@ -75,7 +81,8 @@ fceumm at this commit does this in two places, and neither affects the game:
 
 Supafaust is the other way round: it exposes no memory to the frontend but its save RAM, so `memoryHashes` says
 little, while its whole state comes back exactly after a rollback (no mismatches in the five games of the checks
-below). Rombie compares the whole state for SNES.
+below). Rombie compares the whole state for SNES. Gearsystem's does too, with the link on: both consoles are in the
+state, which comes back exactly after a rollback (see Testing), while `memoryHashes` covers the first console only.
 
 ## The cores
 
@@ -84,6 +91,7 @@ below). Rombie compares the whole state for SNES.
 | fceumm (NES) | `fceumm`: [libretro/libretro-fceumm](https://github.com/libretro/libretro-fceumm) `5cd4a43e16a7f3cd35628d481c347a0a98cfdfa2` | GPL-2.0-or-later | `fceumm.js`, `.wasm` |
 | Beetle Supafaust (SNES) | `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` | GPL-2.0-or-later | `supafaust.js`, `.wasm` |
 | PCSX ReARMed (PS1) | `pcsx_rearmed`: [libretro/pcsx_rearmed](https://github.com/libretro/pcsx_rearmed) `228c14e10e9a8fae0ead8adf30daad2cdd8655b9` | GPL-2.0-or-later | `pcsx_rearmed.js`, `.wasm` |
+| Gearsystem (Master System and Game Gear) | `gearsystem`: [drhelius/Gearsystem](https://github.com/drhelius/Gearsystem) `517ddaaafbab1af7a312c2b6b6f6043275f58500` (3.9.22) · `emu2413`: [digital-sound-antiques/emu2413](https://github.com/digital-sound-antiques/emu2413) `2e4f6f9752f43cc33572c6636ca31a647600732c` (1.6.2) | GPL-3.0-or-later (Gearsystem and the files in `overlay/`) with MIT (emu2413) | `gearsystem.js`, `.wasm` |
 
 This is the commit libretro's buildbot built for RetroArch 1.22.2 (its core reports "(SVN) 5cd4a43"), which is the
 build Rombie's solo NES runs (Nostalgist's cores come from `arianrhodsandlot/retroarch-emscripten-build@v1.22.2`,
@@ -139,10 +147,25 @@ its XA audio buffer starts. The whole saved state also differs between engines i
 GPU block that are never read, so Rombie compares game memory and pictures for PS1, as for NES. A disc with several
 tracks is loaded through its `.cue`; a disc set with an `.m3u` (several discs) is not supported.
 
+Gearsystem is the commit Rombie's solo Master System and Game Gear runs (`gearsystem/` in this repo), with the same
+replacement for its YM2413 chip (see Licenses), so a solo game's state loads here. It is built as libretro builds it
+for Emscripten (`platform=emscripten`, C++ without exceptions) and brings no libretro-common helpers, so the frontend
+is compiled against its own `libretro.h`. What this build is for is the Game Gear link. With
+`gearsystem_link_enable` on and a native Game Gear game, the one core runs two consoles of the same game: port 0 is the
+first console's pad and port 1 the second's, `gearsystem_link_screen` and `gearsystem_link_audio` choose which of
+them is drawn and heard (`Screen 1`, `Screen 2`, or both), and the two consoles' save RAM are memory ids `0x100` and
+`0x200`. The link cable between the consoles is inside the core, stepped in lockstep within one process: it cannot
+cross a network (the consoles must agree within 32 CPU cycles, and every read of a link port waits for the other
+console), so a session runs both consoles on each PC and exchanges only the pads, the host's state at the start and
+the checksums, as it does for any other core. Each PC sets the screen and sound options to the console it plays; they
+change what is shown and heard and nothing in the state (see Testing). The state is 862,028 bytes with the link on
+(199,406 without). A game that is not in native Game Gear mode (a Master System game, or a Game Gear game that runs
+in Master System mode) runs on one console as it does solo.
+
 ## Building
 
 From the repo root, with the submodules checked out (`git submodule update --init netplay/fceumm netplay/supafaust
-netplay/pcsx_rearmed`; pcsx_rearmed's own submodules are not needed):
+netplay/pcsx_rearmed netplay/gearsystem netplay/emu2413`; pcsx_rearmed's own submodules are not needed):
 
 ```sh
 docker build -t rombie-netplay netplay
@@ -153,19 +176,27 @@ The image is Emscripten 3.1.46, pinned by digest, the same as `snes/`. The outpu
 `.js` and `.wasm` per core, with their `SHA256SUMS`. Builds are byte for byte the same each time; this source builds:
 
 ```
-f9b250663b1fac337cc5706865232d66fa7b5c8ec0ac18013ce1e92ed7fa0c3a  fceumm.js
-4db3f049d9349e2ad561f6ec0948957acde99631826153399416f53575ae4043  fceumm.wasm
-fd099696e526627b276629466e68b6731fc53b0f9211153a8f48817d63798224  supafaust.js
-869afb71dc6883c70bcba6575d2ef34768afdcea15be47770528b364a5c3473e  supafaust.wasm
-15bac9a448087418c250ff8897da8d6c0075417e8519e938ffaeb16f2a19fe37  pcsx_rearmed.js
-59dbc9d7d65246eb1917ebfcef18c89b4db6deff055b085f15e6118249aa7439  pcsx_rearmed.wasm
+f63f8aa657a76ca533d5adb222082f1366eaa36da5c0c9a58c7f313e599e8d0f  fceumm.js
+3a2aba3c32a10824798790942b08a7322f7bf0cdff2f1daf82a2e45829d177a0  fceumm.wasm
+0f7386a99e588bbc4f639d13964581efddc16e2a10862732c9ea293674ad2a0f  supafaust.js
+df836dc3a85af382f448d9c3be817941ec02f141998f6ee07643ab838619e7d6  supafaust.wasm
+f4b9cc2fccdeac7eb73650f40952eca6a9af43c4c906696269096a2e7944fe3a  pcsx_rearmed.js
+8830e7137c1826e7704af8cda21094480bde1c67aae92266bcd149c74a5eba0a  pcsx_rearmed.wasm
+3446d56d2d636eedaa23824bf070845e8974845e2bf57c285a17f9a9c5d4695e  gearsystem.js
+bfe4b1594b335013d180c7e5860227f1ed2a592b8109df1669e8f4dff6311ff5  gearsystem.wasm
 ```
+
+All eight files changed from `rombie-netplay-engine-2026.0.1`: the frontend's save RAM calls take a memory id, which
+every core's build links, and the Worker script is built into each. The NES, SNES and PS1 engines were run again on one game each (Super Mario
+Bros. 3 for 12,000 frames, Super Mario Kart for 12,000, Spyro the Dragon for 3,000), and give the results documented
+here: game memory and picture match, apart from the one boot frame of Spyro's (frame 253), and the whole saved state
+differs where it is said to (NES's sound filter, PS1's save counter, SNES's DSP-1 block).
 
 ## Testing
 
 `test.html` checks the engine on its own. Serve this folder over HTTP after building (a Worker will not start from
 `file://`), for example `python -m http.server 8642` here, open `http://localhost:8642/test.html` (the NES engine;
-`test.html?engine=out/supafaust.js` for SNES; `?engine=out/pcsx_rearmed.js` for PS1, picking all of a disc's files and a BIOS), pick a ROM and run:
+`test.html?engine=out/supafaust.js` for SNES; `?engine=out/pcsx_rearmed.js` for PS1, picking all of a disc's files and a BIOS; `?engine=out/gearsystem.js` for a Game Gear game's link, with the link on and engine B on the second console as a session's guest has it, and `?options=key=value;key=value` and `?optionsB=` to set core options), pick a ROM and run:
 
 - **Determinism**: engine A runs scripted two-player input straight; engine B runs the same input the way a guest's
   rollback session does (player 1's input arrives up to 7 frames late, B repeats the last one it knows, then rolls back
@@ -176,6 +207,7 @@ fd099696e526627b276629466e68b6731fc53b0f9211153a8f48817d63798224  supafaust.js
 - **Stress**: every frame, roll back 8 frames and run them again plus one new frame, at 60 fps, counting the page's
   message round trips.
 - **Solo state**: load a core state taken from a RetroArch save state and play on.
+- **Save RAM**: write a different pattern to each memory id (Gearsystem's `0x100` and `0x200`) and read them back.
 
 Supafaust, 36,000 frames each (10 minutes of play) with 2,621 rollbacks, on the PC the engine was built on (2026-10-10):
 
@@ -204,6 +236,28 @@ after them match again. A load takes 1.4 to 1.6 ms. The whole saved state differ
 (see The cores). A PS1 frame costs about five times an SNES one, so eight frames again every frame is far out of
 reach; the short rollbacks of a real session fit.
 
+Gearsystem, Super Space Invaders (USA, Europe) in its link game, both consoles of the one core, the same runs on
+the same PC (2026-10-15). The scripted inputs press Start, Down and button 1 on both pads to reach LINK GAME, then
+play both pads at random for 36,000 frames (10 minutes) with 2,583 rollbacks of engine B (6,643 frames run again):
+
+| Engines | Mismatches (game memory, picture, whole saved state) |
+| --- | --- |
+| A and B both on console 1 | 0, 0, 0 |
+| A on console 1 and B on console 2, as a session's host and guest are | 0, differ by design, 0 |
+| Control (B gets inputs A never sees) | fails from the frame the inputs differ, as it must |
+
+Showing and hearing the other console changes the picture and the sound, and nothing in the state. A frame of both
+consoles takes 1.2 ms, a save 0.96 ms and a load 2.0 ms (state 862,028 bytes); the stress run (rolling back and running
+again every frame, with the page's message round trips) holds 59.8 fps with 2 frames back (55% of the frame's 16.7 ms)
+and with 4 back (80%), and 46.8 fps with 8 back (128%, so eight frames every frame is out of reach, as it is for the
+SA-1 and PS1; a real session rolls back only as far as an input arrived late). Save RAM reads and writes back by
+memory id for each console, 32,768 bytes each. A solo Game Gear state (199,406 bytes) has no second console, so it
+loads with the link off; a link state is the engine's own (the host's, sent to the guest).
+
+Super Mario Kart (a DSP-1 game) differs in the whole saved state after rollbacks in the `SP1` block (10,866 of 12,000
+frames) while its game memory and picture match on every frame; `rombie-netplay-engine-2026.0.1` does the same, so it
+is not from this release.
+
 ## Licenses
 
 fceumm and Supafaust are GPL-2.0-or-later; their own copies of the license (`Copying`, `COPYING`) are in the
@@ -214,3 +268,11 @@ GPL-2.0-or-later (its `COPYING`); the parts of it compiled in that are under oth
 LZMA, zstd and FLAC decoders (BSD-3-Clause and public domain, notices in `deps/libchdr`) and `gte_divider.c`
 (BSD-3-Clause, in its header). zlib, which it reads CHD and PBP images with, is Emscripten's port (zlib License). The libretro-common files compiled in from fceumm's
 source are MIT, as their headers say.
+
+Gearsystem is GPL-3.0-or-later (its `LICENSE`, the same text as `LICENSES/GPL-3.0.txt`). Its engine combines it with
+this folder's GPL-2.0-or-later files under version 3, so `gearsystem.js` and `.wasm` are GPL-3.0-or-later as a whole,
+and the two files in `overlay/` are GPL-3.0-or-later like Gearsystem's own. What it compiles in under other licenses:
+Blip_Buffer 0.4.1 and Sms_Snd_Emu 0.1.4 (LGPL-2.1-or-later, `LICENSES/LGPL-2.1.txt`), Stereo_Buffer 0.3.0
+(GPL-2.0-or-later), miniz 3.1.2 (MIT, with public-domain parts) and emu2413 1.6.2 (MIT, `LICENSES/emu2413-MIT.txt`).
+The YM2413 chip is the part Gearsystem has from Genesis Plus GX, under that project's non-commercial license, and is
+not built: `overlay/` and emu2413 take its place, as in `gearsystem/`.

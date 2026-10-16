@@ -11,7 +11,7 @@ rebuilt from here. Each release attaches a full-source archive that includes the
 | --- | --- | --- | --- | --- |
 | `snes/` | RetroArch for Emscripten with Beetle Supafaust, Rombie's SNES emulator | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` | GPL-3.0-or-later (RetroArch) with GPL-2.0-or-later (Supafaust) | `public/cores/mednafen_supafaust_libretro.js`, `.wasm` |
 | `mgba-link/` | mGBA for Rombie's Link Cable engine (two-player link play for Game Boy Color and Game Boy Advance) | `mgba`: [thenick775/mgba](https://github.com/thenick775/mgba) `e974b288bd7e5cfc7c7b96f8b4d32b673ddfb68c` (branch `feature/wasm`) | MPL-2.0 | `public/link-cable/mgba-link.js`, `.wasm` |
-| `netplay/` | Rombie's netplay engine: a libretro frontend of Rombie's own, run in a Web Worker, built with one core per file (NES, SNES and PS1) | `fceumm`: [libretro/libretro-fceumm](https://github.com/libretro/libretro-fceumm) `5cd4a43e16a7f3cd35628d481c347a0a98cfdfa2` · `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` · `pcsx_rearmed`: [libretro/pcsx_rearmed](https://github.com/libretro/pcsx_rearmed) `228c14e10e9a8fae0ead8adf30daad2cdd8655b9` | GPL-2.0-or-later | `public/netplay/fceumm.js`, `.wasm`, `supafaust.js`, `.wasm`, `pcsx_rearmed.js`, `.wasm` |
+| `netplay/` | Rombie's netplay engine: a libretro frontend of Rombie's own, run in a Web Worker, built with one core per file (NES, SNES, PS1, and the Game Gear's two-console link) | `fceumm`: [libretro/libretro-fceumm](https://github.com/libretro/libretro-fceumm) `5cd4a43e16a7f3cd35628d481c347a0a98cfdfa2` · `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` · `pcsx_rearmed`: [libretro/pcsx_rearmed](https://github.com/libretro/pcsx_rearmed) `228c14e10e9a8fae0ead8adf30daad2cdd8655b9` · `gearsystem`: [drhelius/Gearsystem](https://github.com/drhelius/Gearsystem) `517ddaaafbab1af7a312c2b6b6f6043275f58500` (3.9.22) · `emu2413`: [digital-sound-antiques/emu2413](https://github.com/digital-sound-antiques/emu2413) `2e4f6f9752f43cc33572c6636ca31a647600732c` (1.6.2) | GPL-2.0-or-later (fceumm, Supafaust, pcsx_rearmed and the engine's own files), GPL-3.0-or-later (Gearsystem, combined with the engine's files under version 3) with MIT (emu2413) | `public/netplay/fceumm.js`, `.wasm`, `supafaust.js`, `.wasm`, `pcsx_rearmed.js`, `.wasm`, `gearsystem.js`, `.wasm` |
 | `clownmdemu/` | RetroArch for Emscripten with ClownMDEmu, Rombie's Sega Genesis and Sega CD emulator | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `clownmdemu-libretro`: [Clownacy/clownmdemu-libretro](https://github.com/Clownacy/clownmdemu-libretro) `f8395036544d806ebc68fd110a5621c49991a91d` (v1.6.12), with its own submodules | GPL-3.0-or-later (RetroArch) with AGPL-3.0-or-later (ClownMDEmu) | `public/cores/ClownMDEmu_libretro.js`, `.wasm` |
 | `gearsystem/` | RetroArch for Emscripten with Gearsystem, Rombie's Sega Master System and Game Gear emulator, built without the one file of Gearsystem's that comes from Genesis Plus GX (its YM2413 FM chip), which Rombie's copy replaces with Okazaki's emu2413 | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `Gearsystem`: [drhelius/Gearsystem](https://github.com/drhelius/Gearsystem) `517ddaaafbab1af7a312c2b6b6f6043275f58500` (3.9.22) · `emu2413`: [digital-sound-antiques/emu2413](https://github.com/digital-sound-antiques/emu2413) `2e4f6f9752f43cc33572c6636ca31a647600732c` (1.6.2) | GPL-3.0-or-later (RetroArch, Gearsystem and this repo's replacement files) with MIT (emu2413) | `public/cores/gearsystem_libretro.js`, `.wasm` |
 
@@ -54,6 +54,19 @@ a8f0a858a30e2b7fd13d439b922f1f0eeff412b32249321134ba201d4146f6ba  ClownMDEmu_lib
 ```
 3a32363c3b1acb36939b03ca54bdc6cb64f08786fa8c4c0f07d5749d6d5e20f6  mgba-link.wasm
 0247b5c54c732eb1577a0f365e3721b2c6d7c21fd7b187fbba0d438e83352cbe  mgba-link.js
+```
+
+`rombie-netplay-engine-2026.0.2`:
+
+```
+f63f8aa657a76ca533d5adb222082f1366eaa36da5c0c9a58c7f313e599e8d0f  fceumm.js
+3a2aba3c32a10824798790942b08a7322f7bf0cdff2f1daf82a2e45829d177a0  fceumm.wasm
+0f7386a99e588bbc4f639d13964581efddc16e2a10862732c9ea293674ad2a0f  supafaust.js
+df836dc3a85af382f448d9c3be817941ec02f141998f6ee07643ab838619e7d6  supafaust.wasm
+f4b9cc2fccdeac7eb73650f40952eca6a9af43c4c906696269096a2e7944fe3a  pcsx_rearmed.js
+8830e7137c1826e7704af8cda21094480bde1c67aae92266bcd149c74a5eba0a  pcsx_rearmed.wasm
+3446d56d2d636eedaa23824bf070845e8974845e2bf57c285a17f9a9c5d4695e  gearsystem.js
+bfe4b1594b335013d180c7e5860227f1ed2a592b8109df1669e8f4dff6311ff5  gearsystem.wasm
 ```
 
 `rombie-netplay-engine-2026.0.1`:
@@ -198,7 +211,8 @@ does not carry; it is the SPDX License List's `LGPL-2.1-only` text), each
 copied from the project at the pinned commit where it has one (Gearsystem's own `LICENSE` is the same text as `GPL-3.0.txt`). Every upstream project stays under its own license. The files written for this repo (build scripts,
 Dockerfile, patches, this README) are under the license of what they build: GPL-3.0-or-later in `snes/` and at the
 root, except the Supafaust patch, which stays under Supafaust's GPL-2.0-or-later, MPL-2.0 in `mgba-link/`,
-GPL-2.0-or-later in `netplay/`, whose engine links GPL-2.0-or-later cores, and GPL-3.0-or-later in `clownmdemu/`
+GPL-2.0-or-later in `netplay/`, whose engine links GPL-2.0-or-later cores (and, in its Gearsystem build, GPL-3.0-or-later
+Gearsystem, which the same files then combine with under version 3), and GPL-3.0-or-later in `clownmdemu/`
 (RetroArch's), beside the AGPL-3.0-or-later ClownMDEmu it builds. The ClownMDEmu build also compiles in libraries under
 their own licenses, listed with their commits in `.docs/licenses.md` of Rombie and here: clown68000 and clownz80
 (AGPL-3.0, with the core), clowncommon, clownresampler and clowncd (0BSD), libchdr (BSD-3-Clause) with its LZMA SDK

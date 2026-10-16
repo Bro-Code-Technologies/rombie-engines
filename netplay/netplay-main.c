@@ -427,12 +427,14 @@ EMSCRIPTEN_KEEPALIVE int np_load_state(const uint8_t *data, size_t size, int32_t
   return 1;
 }
 
-EMSCRIPTEN_KEEPALIVE uint8_t *np_sram_data(void) {
-  return retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
+/* A libretro memory id: RETRO_MEMORY_SAVE_RAM (0) unless the core has more than one, as Gearsystem's link does,
+ * where the second console's save RAM is (2 << 8) | RETRO_MEMORY_SAVE_RAM. */
+EMSCRIPTEN_KEEPALIVE uint8_t *np_sram_data(unsigned id) {
+  return retro_get_memory_data(id);
 }
 
-EMSCRIPTEN_KEEPALIVE size_t np_sram_size(void) {
-  return retro_get_memory_data(RETRO_MEMORY_SAVE_RAM) ? retro_get_memory_size(RETRO_MEMORY_SAVE_RAM) : 0;
+EMSCRIPTEN_KEEPALIVE size_t np_sram_size(unsigned id) {
+  return retro_get_memory_data(id) ? retro_get_memory_size(id) : 0;
 }
 
 EMSCRIPTEN_KEEPALIVE uint32_t *np_frame_pixels(void) { return frame_rgba; }

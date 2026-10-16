@@ -4,7 +4,7 @@
 #   docker build -t rombie-netplay netplay
 #   docker run --rm -v "${PWD}:/repo" rombie-netplay sh /repo/netplay/build.sh
 # Output: netplay/out/fceumm.js and .wasm (NES), supafaust.js and .wasm (SNES), pcsx_rearmed.js and
-# .wasm (PS1), and SHA256SUMS.
+# .wasm (PS1), gearsystem.js and .wasm (Master System and Game Gear), and SHA256SUMS.
 set -eu
 REPO=/repo
 W=/work
@@ -12,6 +12,8 @@ OUT=$REPO/netplay/out
 N=$(nproc)
 # The core's commit, stamped into its version string as libretro's buildbot does ("(SVN) 5cd4a43").
 FCEUMM_COMMIT=5cd4a43
+# Gearsystem's version and commit (3.9.22).
+GEARSYSTEM_VERSION=3.9.22-517ddaa
 
 # Each source is copied out of the repo before building, so the checkout stays clean and a Windows
 # checkout's line endings never reach the compiler: from git when the folder is a checked-out
@@ -122,7 +124,40 @@ emcc -O3 \
   --post-js "$W/engine/netplay-worker.js" \
   -o "$W/out/pcsx_rearmed.js"
 
+# Gearsystem (Master System and Game Gear), the commit and the YM2413 replacement Rombie's solo build runs
+# (gearsystem/), so a solo game's state loads here. Its Game Gear link, two consoles in the one core, is what a
+# netplay session plays: each PC runs both consoles and only the pads travel.
+copy_source netplay/gearsystem gearsystem
+copy_source netplay/emu2413 emu2413
+# Gearsystem's src/audio/emu2413/ holds Genesis Plus GX's ym2413.c under that name, which is not licensed for what
+# Rombie is. Rombie's two files take its place, with Mitsutaka Okazaki's emu2413 (MIT) beside them for them to
+# include (the same as gearsystem/build.sh).
+CHIP=$W/gearsystem/src/audio/emu2413
+rm -f "$CHIP/emu2413.c" "$CHIP/emu2413.h"
+mkdir -p "$CHIP/okazaki"
+cp "$W/emu2413/emu2413.c" "$W/emu2413/emu2413.h" "$CHIP/okazaki/"
+cp "$REPO/netplay/overlay/src/audio/emu2413/emu2413.c" "$REPO/netplay/overlay/src/audio/emu2413/emu2413.h" "$CHIP/"
+echo "YM2413: Rombie's files over Okazaki's emu2413"
+# The Gearsystem commit's date (2026-10-11 17:58:34 UTC).
+export SOURCE_DATE_EPOCH=1791741514
+unset EMCC_CFLAGS
+# The core as libretro builds it for Emscripten (platform=emscripten: a static object, C++ without exceptions). A work
+# copy has no git history for the Makefile to describe, so the version it reports is stamped, as fceumm's is.
+(cd "$W/gearsystem/platforms/libretro" && emmake make -j"$N" platform=emscripten GIT_VERSION="$GEARSYSTEM_VERSION")
+# The engine's frontend is compiled against Gearsystem's own libretro.h, which the core brings no helpers for.
+emcc -O3 -I "$W/gearsystem/platforms/libretro" -c "$W/engine/netplay-main.c" -o "$W/engine/netplay-main-gearsystem.o"
+em++ -O3 \
+  "$W/engine/netplay-main-gearsystem.o" "$W/gearsystem/platforms/libretro/gearsystem_libretro_emscripten.bc" \
+  -sENVIRONMENT=worker \
+  -sALLOW_MEMORY_GROWTH=1 \
+  -sINITIAL_MEMORY=33554432 \
+  -sEXPORTED_FUNCTIONS=_malloc,_free \
+  -sEXPORTED_RUNTIME_METHODS=FS,UTF8ToString,stringToNewUTF8,HEAPU8,HEAP16 \
+  --post-js "$W/engine/netplay-worker.js" \
+  -o "$W/out/gearsystem.js"
+
 mkdir -p "$OUT"
 cp "$W/out/fceumm.js" "$W/out/fceumm.wasm" "$W/out/supafaust.js" "$W/out/supafaust.wasm" \
-  "$W/out/pcsx_rearmed.js" "$W/out/pcsx_rearmed.wasm" "$OUT/"
-(cd "$OUT" && sha256sum fceumm.js fceumm.wasm supafaust.js supafaust.wasm pcsx_rearmed.js pcsx_rearmed.wasm | tee SHA256SUMS)
+  "$W/out/pcsx_rearmed.js" "$W/out/pcsx_rearmed.wasm" "$W/out/gearsystem.js" "$W/out/gearsystem.wasm" "$OUT/"
+(cd "$OUT" && sha256sum fceumm.js fceumm.wasm supafaust.js supafaust.wasm pcsx_rearmed.js pcsx_rearmed.wasm \
+  gearsystem.js gearsystem.wasm | tee SHA256SUMS)

@@ -42,3 +42,11 @@
 	path = gearsystem/emu2413
 	url = https://github.com/digital-sound-antiques/emu2413.git
 	shallow = true
+[submodule "netplay/gearsystem"]
+	path = netplay/gearsystem
+	url = https://github.com/drhelius/Gearsystem.git
+	shallow = true
+[submodule "netplay/emu2413"]
+	path = netplay/emu2413
+	url = https://github.com/digital-sound-antiques/emu2413.git
+	shallow = true
