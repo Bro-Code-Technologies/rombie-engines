@@ -179,6 +179,26 @@
       return { type: 'sramSet', written: Math.min(size, bytes.length) }
     },
 
+    // The files in the core's save folder, for a core that keeps its in-game save as files rather than save RAM
+    // (ClownMDEmu writes a Sega CD's backup RAM as one file per entry). They are not part of a saved state.
+    filesGet() {
+      const files = FS.readdir('/save')
+        .filter((name) => name !== '.' && name !== '..')
+        .map((name) => ({ name, data: FS.readFile('/save/' + name).slice().buffer }))
+      return [{ type: 'files', files }, files.map((file) => file.data)]
+    },
+
+    // Replaces every file in the save folder with these.
+    filesSet(msg) {
+      for (const name of FS.readdir('/save')) {
+        if (name !== '.' && name !== '..') FS.unlink('/save/' + name)
+      }
+      for (const file of msg.files || []) {
+        FS.writeFile('/save/' + String(file.name).replace(/[/\\]/g, '_'), new Uint8Array(file.data))
+      }
+      return { type: 'filesSet' }
+    },
+
     options(msg) {
       for (const [key, value] of Object.entries(msg.options || {})) setOption(key, value)
       return { type: 'options' }

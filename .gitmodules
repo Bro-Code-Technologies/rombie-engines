@@ -50,3 +50,7 @@
 	path = netplay/emu2413
 	url = https://github.com/digital-sound-antiques/emu2413.git
 	shallow = true
+[submodule "netplay/clownmdemu-libretro"]
+	path = netplay/clownmdemu-libretro
+	url = https://github.com/Clownacy/clownmdemu-libretro
+	shallow = true

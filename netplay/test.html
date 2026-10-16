@@ -228,7 +228,8 @@ const sleepUntil = (t) => new Promise((r) => setTimeout(r, Math.max(0, t - perfo
 async function runDeterminism(rom) {
   const frames = Number($('frames').value)
   const realtime = $('realtime').checked
-  const truth = scriptedInputs(frames, 22)
+  // ?scriptFrames= keeps a longer run's script, so a shorter run stops partway through the same play.
+  const truth = scriptedInputs(Math.max(frames, Number(PARAMS.get('scriptFrames') || 0)), 22)
   // The control proves the comparison can fail: from halfway, B's copy of player 1's input is a
   // different player's, as if corrections were lost.
   const control = $('control').checked

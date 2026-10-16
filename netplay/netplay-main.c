@@ -61,14 +61,22 @@ static int32_t frame_number; /* the frame about to run */
 
 static double now_ms(void) { return emscripten_get_now(); }
 
+/* A core's messages go to the Worker's console, which is slow, and a core can send many a frame (ClownMDEmu sends one
+ * for each Sega CD BIOS call). RetroArch prints none unless its log is verbose; this prints the first lines, then only
+ * errors. */
+#define LOG_LINES 64
+static int log_lines = 0;
+
 static void log_message(enum retro_log_level level, const char *fmt, ...) {
   static const char *names[] = { "debug", "info", "warn", "error" };
+  if (level < RETRO_LOG_INFO || (level < RETRO_LOG_ERROR && log_lines >= LOG_LINES)) return;
+  log_lines++;
   char line[1024];
   va_list args;
   va_start(args, fmt);
   vsnprintf(line, sizeof(line), fmt, args);
   va_end(args);
-  if (level >= RETRO_LOG_INFO) printf("[core %s] %s", names[level & 3], line);
+  printf("[core %s] %s", names[level & 3], line);
 }
 
 static char *copy_string(const char *s, size_t n) {

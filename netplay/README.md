@@ -47,6 +47,8 @@ order; the engine posts `{ type: 'ready' }` when it is up.
 | `loadState { data, frame }` | `stateLoaded { frame }`: the state becomes the state before `frame`, and the ring starts over |
 | `sramGet { memory? }` | `sram { data }` (`null` when the game has none) |
 | `sramSet { data, memory? }` | `sramSet { written }` |
+| `filesGet` | `files { files }`: the files in the core's save folder, as `[{ name, data }]` |
+| `filesSet { files }` | `filesSet`: the save folder holds these and nothing else |
 | `options { options }` | `options` |
 | `device { port, device }` | `device` |
 | `reset` | `reset { frame }` |
@@ -57,6 +59,14 @@ Buffers in replies are transferred, not copied.
 
 **Save RAM.** `memory` is a libretro memory id, `RETRO_MEMORY_SAVE_RAM` (0) when absent. Gearsystem with its link on
 runs two consoles, whose save RAM are `0x100` and `0x200` (0 is the first console's too); every other core has the one.
+
+**Save files.** ClownMDEmu keeps a Sega CD game's backup RAM as files in the core's save folder (`/save`, one `.brm`
+per entry the BIOS's backup calls make), not as save RAM, and they are not part of a saved state. `filesGet` and
+`filesSet` move them in and out, so Rombie hands them across as it does save RAM.
+
+**Core messages.** A core's log messages go to the Worker's console, which is slow, and a core can send many a frame:
+ClownMDEmu sends one for every Sega CD BIOS call, which made a Sega CD frame take 25 ms instead of 3.6. RetroArch prints
+none unless its log is verbose; the frontend prints a core's first 64 lines, then only errors.
 
 **Inputs.** `inputs` is an `Int16Array` buffer of 20 values per frame: for each of four ports, the buttons as
 libretro's joypad bitmask (bit `RETRO_DEVICE_ID_JOYPAD_*`: B 0, Y 1, Select 2, Start 3, Up 4, Down 5, Left 6,
@@ -92,6 +102,7 @@ state, which comes back exactly after a rollback (see Testing), while `memoryHas
 | Beetle Supafaust (SNES) | `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` | GPL-2.0-or-later | `supafaust.js`, `.wasm` |
 | PCSX ReARMed (PS1) | `pcsx_rearmed`: [libretro/pcsx_rearmed](https://github.com/libretro/pcsx_rearmed) `228c14e10e9a8fae0ead8adf30daad2cdd8655b9` | GPL-2.0-or-later | `pcsx_rearmed.js`, `.wasm` |
 | Gearsystem (Master System and Game Gear) | `gearsystem`: [drhelius/Gearsystem](https://github.com/drhelius/Gearsystem) `517ddaaafbab1af7a312c2b6b6f6043275f58500` (3.9.22) · `emu2413`: [digital-sound-antiques/emu2413](https://github.com/digital-sound-antiques/emu2413) `2e4f6f9752f43cc33572c6636ca31a647600732c` (1.6.2) | GPL-3.0-or-later (Gearsystem and the files in `overlay/`) with MIT (emu2413) | `gearsystem.js`, `.wasm` |
+| ClownMDEmu (Genesis and Sega CD) | `clownmdemu-libretro`: [Clownacy/clownmdemu-libretro](https://github.com/Clownacy/clownmdemu-libretro) `f8395036544d806ebc68fd110a5621c49991a91d` (v1.6.12), with its own submodules, and `patches/clownmdemu.patch` | AGPL-3.0-or-later (ClownMDEmu, clown68000, clownz80 and the patch) with 0BSD, BSD-3-Clause and MIT libraries | `clownmdemu.js`, `.wasm` |
 
 This is the commit libretro's buildbot built for RetroArch 1.22.2 (its core reports "(SVN) 5cd4a43"), which is the
 build Rombie's solo NES runs (Nostalgist's cores come from `arianrhodsandlot/retroarch-emscripten-build@v1.22.2`,
@@ -160,12 +171,25 @@ console), so a session runs both consoles on each PC and exchanges only the pads
 the checksums, as it does for any other core. Each PC sets the screen and sound options to the console it plays; they
 change what is shown and heard and nothing in the state (see Testing). The state is 862,028 bytes with the link on
 (199,406 without). A game that is not in native Game Gear mode (a Master System game, or a Game Gear game that runs
-in Master System mode) runs on one console as it does solo.
+in Master System mode) runs on one console as it does solo. With the link off it is the Master System's engine:
+there, as with fceumm, the whole state does not come back exactly after a rollback (a few bytes of sound state the
+frames run again leave behind) while game memory and picture do, so Rombie compares those.
+
+ClownMDEmu is the commit and patch Rombie's solo Genesis and Sega CD run (`clownmdemu/` in this repo), so a solo game's
+state loads here; its core and libraries are submodules nested inside `clownmdemu-libretro`, which `build.sh` copies at
+the commits it pins. `patches/clownmdemu.patch` (the same file as `clownmdemu/patches/`) puts the pads' and multitap
+adapters' own state into a saved state: upstream leaves it out, so after a load a six-button pad's strobe count and
+an adapter's selected pad were wherever the other timeline left them, and two engines read different buttons. A Sega
+CD disc is mounted read-only as PS1's is; the core reads CHD with its own libchdr and carries its own boot ROM, so there
+is no BIOS. Its pictures can show stale colours for a few frames after a rollback (the core's colour cache is not part
+of a state; it catches up on the game's next palette write) while the state is exact, so Rombie compares the whole
+state and not the picture. The state is 1,132,088 bytes.
 
 ## Building
 
 From the repo root, with the submodules checked out (`git submodule update --init netplay/fceumm netplay/supafaust
-netplay/pcsx_rearmed netplay/gearsystem netplay/emu2413`; pcsx_rearmed's own submodules are not needed):
+netplay/pcsx_rearmed netplay/gearsystem netplay/emu2413 netplay/clownmdemu-libretro`, then
+`git -C netplay/clownmdemu-libretro submodule update --init --recursive`; pcsx_rearmed's own submodules are not needed):
 
 ```sh
 docker build -t rombie-netplay netplay
@@ -176,18 +200,21 @@ The image is Emscripten 3.1.46, pinned by digest, the same as `snes/`. The outpu
 `.js` and `.wasm` per core, with their `SHA256SUMS`. Builds are byte for byte the same each time; this source builds:
 
 ```
-f63f8aa657a76ca533d5adb222082f1366eaa36da5c0c9a58c7f313e599e8d0f  fceumm.js
-3a2aba3c32a10824798790942b08a7322f7bf0cdff2f1daf82a2e45829d177a0  fceumm.wasm
-0f7386a99e588bbc4f639d13964581efddc16e2a10862732c9ea293674ad2a0f  supafaust.js
-df836dc3a85af382f448d9c3be817941ec02f141998f6ee07643ab838619e7d6  supafaust.wasm
-f4b9cc2fccdeac7eb73650f40952eca6a9af43c4c906696269096a2e7944fe3a  pcsx_rearmed.js
-8830e7137c1826e7704af8cda21094480bde1c67aae92266bcd149c74a5eba0a  pcsx_rearmed.wasm
-3446d56d2d636eedaa23824bf070845e8974845e2bf57c285a17f9a9c5d4695e  gearsystem.js
-bfe4b1594b335013d180c7e5860227f1ed2a592b8109df1669e8f4dff6311ff5  gearsystem.wasm
+545e20e338ed01412fb8e3b703cc1de81b866d32a97157e272dbfc7dec61ba71  fceumm.js
+bc2504d91319f3057bd3886f5212f40f6becb82d8d7e772b9b11f09dee5b102a  fceumm.wasm
+a971620743731fd1ff651757e05c7af8c2cac5530e47f0dc6b9b2e95f42d3a19  supafaust.js
+60a4fa88228e8cf05619a74739acd98b8e11d31b5a1d1513a63e74317930f78e  supafaust.wasm
+ea8c7f349ea04a97171bb2990406b04105424a8b053f94f35a07064c6e40cd79  pcsx_rearmed.js
+cda5d2e20ff15aea4ac6b60069306af4c230a30dff5b165ebacb7cdb5bfc63f4  pcsx_rearmed.wasm
+cc1ffcfc79531957a3a3daaa338dee677efaff02eaa538ad0c4330615bd80b7d  gearsystem.js
+b39f56229acb6c45baa91173e176a2c2316fe53ef8bfd6b86a1b53d8688d5608  gearsystem.wasm
+d838fec78e3309b2ac92acea7060e11b2d9d4447c625b0c31ee55bf7bf37ffed  clownmdemu.js
+404bb448906c9d9d0947a2047350b8453ec41536ab2d83c49ce9a1d04d1d2c98  clownmdemu.wasm
 ```
 
-All eight files changed from `rombie-netplay-engine-2026.0.1`: the frontend's save RAM calls take a memory id, which
-every core's build links, and the Worker script is built into each. The NES, SNES and PS1 engines were run again on one game each (Super Mario
+Every file changed from `rombie-netplay-engine-2026.0.1`: the frontend's save RAM calls take a memory id, it limits
+a core's log messages, the Worker script has the save folder messages, and both are built into each core's files.
+Two builds from the same checkout gave the same ten files. The NES, SNES and PS1 engines were run again on one game each (Super Mario
 Bros. 3 for 12,000 frames, Super Mario Kart for 12,000, Spyro the Dragon for 3,000), and give the results documented
 here: game memory and picture match, apart from the one boot frame of Spyro's (frame 253), and the whole saved state
 differs where it is said to (NES's sound filter, PS1's save counter, SNES's DSP-1 block).
@@ -196,7 +223,7 @@ differs where it is said to (NES's sound filter, PS1's save counter, SNES's DSP-
 
 `test.html` checks the engine on its own. Serve this folder over HTTP after building (a Worker will not start from
 `file://`), for example `python -m http.server 8642` here, open `http://localhost:8642/test.html` (the NES engine;
-`test.html?engine=out/supafaust.js` for SNES; `?engine=out/pcsx_rearmed.js` for PS1, picking all of a disc's files and a BIOS; `?engine=out/gearsystem.js` for a Game Gear game's link, with the link on and engine B on the second console as a session's guest has it, and `?options=key=value;key=value` and `?optionsB=` to set core options), pick a ROM and run:
+`test.html?engine=out/supafaust.js` for SNES; `?engine=out/pcsx_rearmed.js` for PS1, picking all of a disc's files and a BIOS; `?engine=out/gearsystem.js` for a Game Gear game's link, with the link on and engine B on the second console as a session's guest has it (`?options=gearsystem_link_enable=Disabled` for a Master System game); `?engine=out/clownmdemu.js` for Genesis or a Sega CD disc (`?options=clownmdemu_input_protocol=ea` or `=sega` for a multitap adapter); `?options=key=value;key=value` and `?optionsB=` to set core options, and `?scriptFrames=` to keep a longer run's input script, so a shorter run stops partway through the same play), pick a ROM and run:
 
 - **Determinism**: engine A runs scripted two-player input straight; engine B runs the same input the way a guest's
   rollback session does (player 1's input arrives up to 7 frames late, B repeats the last one it knows, then rolls back
@@ -256,7 +283,29 @@ loads with the link off; a link state is the engine's own (the host's, sent to t
 
 Super Mario Kart (a DSP-1 game) differs in the whole saved state after rollbacks in the `SP1` block (10,866 of 12,000
 frames) while its game memory and picture match on every frame; `rombie-netplay-engine-2026.0.1` does the same, so it
-is not from this release.
+is not from this release. With the final files (the log limit and the save folder messages) Super Mario Bros. 3, Super
+Mario Kart and Sonic The Hedgehog (Master System, link off) were run again for 6,000 frames each: game memory and
+picture matched on every frame, and the whole state differed only where it is said to.
+
+ClownMDEmu, 6,000 frames each (about 420 rollbacks), the same runs on the same PC (2026-10-16):
+
+| Game | Pads | Mismatches (game memory, whole saved state) |
+| --- | --- | --- |
+| Sonic & Knuckles | standard | 0, 0 |
+| Gauntlet IV | EA 4 Way Play | 0, 0 |
+| Gauntlet IV | Sega Team Player | 0, 0 |
+| Mega Bomberman | Sega Team Player | 0, 0 |
+| Dungeon Explorer (Sega CD, `.chd`) | standard | 0, 0 |
+| General Chaos | standard | 0, 23 (passing; the final states match) |
+| General Chaos | EA 4 Way Play | 1,972 from frame 3,791 |
+
+Without the patch, General Chaos with EA 4 Way Play differed in game memory from frame 110. With it, one difference is
+left: after some replays the 68000 ends a frame with a different count of cycles carried into the next (the
+`state.sync` bytes), which catches up a frame later; the game's EA 4 Way Play reads, which time out by the
+microsecond, sometimes notice. Rombie's checks find that and start the guests again from the host's state. A frame
+takes 1.5 ms for a cartridge and 3.6 ms for the Sega CD disc; the stress run holds 59.6 fps for Sonic & Knuckles
+(77% of the frame) and 31.4 fps for Dungeon Explorer (191%, so the Sega CD cannot run eight frames again every frame;
+a real session's short rollbacks fit).
 
 ## Licenses
 
@@ -276,3 +325,10 @@ Blip_Buffer 0.4.1 and Sms_Snd_Emu 0.1.4 (LGPL-2.1-or-later, `LICENSES/LGPL-2.1.t
 (GPL-2.0-or-later), miniz 3.1.2 (MIT, with public-domain parts) and emu2413 1.6.2 (MIT, `LICENSES/emu2413-MIT.txt`).
 The YM2413 chip is the part Gearsystem has from Genesis Plus GX, under that project's non-commercial license, and is
 not built: `overlay/` and emu2413 take its place, as in `gearsystem/`.
+
+ClownMDEmu (with clown68000 and clownz80) is AGPL-3.0-or-later (its `LICENCE.txt`, the same text as
+`LICENSES/AGPL-3.0.txt`). Its engine combines it with this folder's GPL-2.0-or-later files under version 3, which the
+AGPL allows, so `clownmdemu.js` and `.wasm` are AGPL-3.0-or-later as a whole, and so is `patches/clownmdemu.patch`.
+What it compiles in under other licenses is listed in the repo's README: clowncommon, clownresampler and clowncd
+(0BSD), libchdr (BSD-3-Clause) with its LZMA SDK (public domain), miniz (MIT) and Zstandard decoder (BSD-3-Clause), the
+Mega CD boot ROM (0BSD) and libretro-common's headers (MIT).

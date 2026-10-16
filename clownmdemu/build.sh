@@ -54,6 +54,9 @@ done
 rm -rf "${W:?}"
 copy_tree clownmdemu/RetroArch "$W/RetroArch"
 copy_tree clownmdemu/clownmdemu-libretro "$W/clownmdemu-libretro"
+# A save state keeps the pads' and multitap adapters' own state (README.md, and the patch's own header).
+git -C "$W/clownmdemu-libretro" apply "$REPO/clownmdemu/patches/clownmdemu.patch"
+echo "applied patches/clownmdemu.patch"
 
 # RetroArch puts __DATE__ in its version info; fixing the date at RetroArch's commit
 # (2025-11-17 13:22:57 UTC) keeps rebuilds byte for byte the same.

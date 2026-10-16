@@ -1,0 +1,41 @@
+Rombie's change to ClownMDEmu (Bro Code Technologies, 2026-10-16), under ClownMDEmu's AGPL-3.0, for the core at
+099ab25 (clownmdemu-libretro f839503): a save state also keeps the pads' and multitap adapters' own state
+(ControllerManager_State: a six-button pad's strobe count and countdown, the EA 4 Way Play's selected pad, the Sega
+Team Player's handshake). Without it, a loaded state reads the pads differently from the saved one: netplay's
+rollback falls out of step, and a save state loaded in play can misread the pads.
+
+diff --git a/common/core/source/clownmdemu.c b/common/core/source/clownmdemu.c
+index 84c6820..c8f3474 100644
+--- a/common/core/source/clownmdemu.c
++++ b/common/core/source/clownmdemu.c
+@@ -591,6 +591,8 @@ void ClownMDEmu_SaveState(const ClownMDEmu* const clownmdemu, ClownMDEmu_StateBa
+ 	backup->mega_cd.cdc = clownmdemu->mega_cd.cdc;
+ 	backup->mega_cd.cdda = clownmdemu->mega_cd.cdda.state;
+ 	backup->mega_cd.pcm = clownmdemu->mega_cd.pcm.state;
++
++	backup->controller_manager = clownmdemu->controller_manager.state;
+ }
+ 
+ void ClownMDEmu_LoadState(ClownMDEmu* const clownmdemu, const ClownMDEmu_StateBackup* const backup)
+@@ -607,4 +609,6 @@ void ClownMDEmu_LoadState(ClownMDEmu* const clownmdemu, const ClownMDEmu_StateBa
+ 	clownmdemu->mega_cd.cdc = backup->mega_cd.cdc;
+ 	clownmdemu->mega_cd.cdda.state = backup->mega_cd.cdda;
+ 	clownmdemu->mega_cd.pcm.state = backup->mega_cd.pcm;
++
++	clownmdemu->controller_manager.state = backup->controller_manager;
+ }
+diff --git a/common/core/source/clownmdemu.h b/common/core/source/clownmdemu.h
+index 192d810..b6d1d27 100644
+--- a/common/core/source/clownmdemu.h
++++ b/common/core/source/clownmdemu.h
+@@ -336,6 +336,10 @@ typedef struct ClownMDEmu_StateBackup
+ 		CDDA_State cdda;
+ 		PCM_State pcm;
+ 	} mega_cd;
++
++	/* The pads' and multitap adapters' own state (a six-button pad's strobe count, the adapter's selected pad), so a
++	   loaded state reads the pads as the saved one would. */
++	ControllerManager_State controller_manager;
+ } ClownMDEmu_StateBackup;
+ 
+ void ClownMDEmu_SaveState(const ClownMDEmu *clownmdemu, ClownMDEmu_StateBackup *backup);

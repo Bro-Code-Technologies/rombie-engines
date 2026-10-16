@@ -4,7 +4,8 @@
 #   docker build -t rombie-netplay netplay
 #   docker run --rm -v "${PWD}:/repo" rombie-netplay sh /repo/netplay/build.sh
 # Output: netplay/out/fceumm.js and .wasm (NES), supafaust.js and .wasm (SNES), pcsx_rearmed.js and
-# .wasm (PS1), gearsystem.js and .wasm (Master System and Game Gear), and SHA256SUMS.
+# .wasm (PS1), gearsystem.js and .wasm (Master System and Game Gear), clownmdemu.js and .wasm (Genesis and
+# Sega CD), and SHA256SUMS.
 set -eu
 REPO=/repo
 W=/work
@@ -34,6 +35,28 @@ copy_source() { # repo-path work-dir
     echo "$1 from the source archive"
   else
     echo "$1 is empty (git submodule update --init)"; exit 1
+  fi
+}
+
+# The same for a source whose own submodules are part of the build, copied at the commits it pins, as
+# clownmdemu/build.sh does (ClownMDEmu's core and libraries are nested four deep).
+copy_tree() { # repo-path work-dir
+  mkdir -p "$2"
+  if [ -e "$REPO/$1/.git" ]; then
+    head=$(git -C "$REPO/$1" rev-parse HEAD)
+    echo "$1 at $head"
+    git -C "$REPO/$1" -c core.autocrlf=false archive HEAD | tar -x -C "$2"
+    git -C "$REPO/$1" ls-tree -r HEAD | awk '$2 == "commit" {print $3, $4}' | while read -r pinned sub; do
+      if [ -e "$REPO/$1/$sub/.git" ]; then
+        [ "$(git -C "$REPO/$1/$sub" rev-parse HEAD)" = "$pinned" ] || { echo "$1/$sub is not at $pinned (git submodule update --init --recursive)"; exit 1; }
+      fi
+      copy_tree "$1/$sub" "$2/$sub"
+    done
+  elif [ -n "$(ls -A "$REPO/$1" 2>/dev/null)" ]; then
+    cp -a "$REPO/$1/." "$2/"
+    echo "$1 from the source archive"
+  else
+    echo "$1 is empty (git submodule update --init --recursive)"; exit 1
   fi
 }
 
@@ -156,8 +179,37 @@ em++ -O3 \
   --post-js "$W/engine/netplay-worker.js" \
   -o "$W/out/gearsystem.js"
 
+# ClownMDEmu (Genesis and Sega CD), the commit Rombie's solo build runs (clownmdemu/), so a solo game's state loads
+# here: its libretro core with the core and libraries it pins. A disc is read from the files the page mounts
+# (WORKERFS), as PS1's is; ClownMDEmu carries its own Sega CD boot ROM and reads CHD with its own libchdr.
+rm -rf "${W:?}/clownmdemu-libretro"
+pinned=$(git -C "$REPO" ls-files -s netplay/clownmdemu-libretro | awk '{print $2}')
+if [ -n "$pinned" ] && [ -e "$REPO/netplay/clownmdemu-libretro/.git" ] && [ "$pinned" != "$(git -C "$REPO/netplay/clownmdemu-libretro" rev-parse HEAD)" ]; then
+  echo "netplay/clownmdemu-libretro is not at $pinned (git submodule update --init --recursive)"; exit 1
+fi
+copy_tree netplay/clownmdemu-libretro "$W/clownmdemu-libretro"
+# The patch the solo build has (clownmdemu/): a loaded state reads the pads as the saved one would, which rollback needs.
+git -C "$W/clownmdemu-libretro" apply "$REPO/netplay/patches/clownmdemu.patch"
+echo "applied patches/clownmdemu.patch"
+# The clownmdemu-libretro commit's date (2026-09-17 17:25:23 UTC).
+export SOURCE_DATE_EPOCH=1789665923
+unset EMCC_CFLAGS
+(cd "$W/clownmdemu-libretro" && emmake make -j"$N" platform=emscripten)
+emcc -O3 -I "$W/clownmdemu-libretro/libretro-common/include" -c "$W/engine/netplay-main.c" -o "$W/engine/netplay-main-clownmdemu.o"
+emcc -O3 \
+  "$W/engine/netplay-main-clownmdemu.o" "$W/clownmdemu-libretro/clownmdemu_libretro_emscripten.bc" \
+  -lworkerfs.js \
+  -sENVIRONMENT=worker \
+  -sALLOW_MEMORY_GROWTH=1 \
+  -sINITIAL_MEMORY=67108864 \
+  -sEXPORTED_FUNCTIONS=_malloc,_free \
+  -sEXPORTED_RUNTIME_METHODS=FS,UTF8ToString,stringToNewUTF8,HEAPU8,HEAP16 \
+  --post-js "$W/engine/netplay-worker.js" \
+  -o "$W/out/clownmdemu.js"
+
 mkdir -p "$OUT"
 cp "$W/out/fceumm.js" "$W/out/fceumm.wasm" "$W/out/supafaust.js" "$W/out/supafaust.wasm" \
-  "$W/out/pcsx_rearmed.js" "$W/out/pcsx_rearmed.wasm" "$W/out/gearsystem.js" "$W/out/gearsystem.wasm" "$OUT/"
+  "$W/out/pcsx_rearmed.js" "$W/out/pcsx_rearmed.wasm" "$W/out/gearsystem.js" "$W/out/gearsystem.wasm" \
+  "$W/out/clownmdemu.js" "$W/out/clownmdemu.wasm" "$OUT/"
 (cd "$OUT" && sha256sum fceumm.js fceumm.wasm supafaust.js supafaust.wasm pcsx_rearmed.js pcsx_rearmed.wasm \
-  gearsystem.js gearsystem.wasm | tee SHA256SUMS)
+  gearsystem.js gearsystem.wasm clownmdemu.js clownmdemu.wasm | tee SHA256SUMS)
