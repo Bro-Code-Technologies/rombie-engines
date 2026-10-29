@@ -1,17 +1,105 @@
 Rombie's change to Stella (Bro Code Technologies, 2026-10-29), under Stella's GPL-2.0-or-later, for Stella 7.0c
-(c4016ea): the core is built without the code Stella says it took from z26, whose license (the GPL "Version 2",
-with no "or any later version") cannot be combined with RetroArch's GPL-3.0. Removed:
-- the CompuMate (cartridge scheme CM and its keyboard): a CompuMate cartridge no longer loads;
-- the Kid Vid, the MindLink, the Amiga mouse, the Atari mouse and the trackball: a game set to one of them gets a
-  joystick;
-- the mouse driving a joystick, and the trackball sensitivity setting;
-- the z26 palette: choosing it gives Stella's standard palette, and the libretro option no longer offers it;
-- the default Supercharger header: a 6K image now gets one written from the load format's fields.
-stella/build.sh also deletes the removed classes' files (CartCM, CompuMate, KidVid, MindLink, PointingDevice,
-AmigaMouse, AtariMouse, TrakBall) from the build's copy, so nothing compiled can include them.
+(c4016ea), in four parts.
 
+1. The core is built without the code Stella says it took from z26, whose license (the GPL "Version 2", with no
+   "or any later version") cannot be combined with RetroArch's GPL-3.0. Removed:
+   - the CompuMate (cartridge scheme CM and its keyboard): a CompuMate cartridge no longer loads;
+   - the Kid Vid, the MindLink, the Amiga mouse, the Atari mouse and the trackball: a game set to one of them gets a
+     joystick;
+   - the mouse driving a joystick, and the trackball sensitivity setting;
+   - the z26 palette: choosing it gives Stella's standard palette, and the libretro option no longer offers it;
+   - the default Supercharger header: a 6K image now gets one written from the load format's fields.
+   stella/build.sh also deletes the removed classes' files (CartCM, CompuMate, KidVid, MindLink, PointingDevice,
+   AmigaMouse, AtariMouse, TrakBall) from the build's copy, so nothing compiled can include them.
+2. Every string stream's .view() becomes .str(), in the 25 files the build compiles that call it. Emscripten 3.1.46,
+   the toolchain every Rombie engine is built with, ships libc++ 16, which has no basic_stringstream::view()
+   (libc++ 17). str() returns the same text as a string; every result goes into a string or straight into a call.
+3. On Emscripten, starting emulation clears the input events at once instead of 0.5 s later on TimerManager's thread:
+   the Emscripten build has no threads, and creating one threw an exception nothing caught, so no game loaded.
+4. Backported to the libretro port from Stella's later one (Stella's master, #1083), adapted to 7.0c:
+   - a stick turns a paddle relatively (the dial moves at a speed set by how far the stick is pushed and stays where
+     it is when let go), with the options stella_paddle_analog_absolute (disabled: relative; enabled: 7.0c's
+     behaviour) and stella_paddle_analog_deadzone (default 15%); each paddle reads its own pad's left stick, where
+     7.0c read the second paddle of a port from a pad's right stick;
+   - a stick steers the driving controller (LeftDrivingAnalog, RightDrivingAnalog);
+   - the port devices Joystick, Paddles and Driving (RETRO_DEVICE_SUBCLASS of the joypad, 0, 4 and 5, numbered as
+     in the later port) put that controller on the first two ports in place of the game database's choice, through
+     Stella's own "lc" and "rc" settings, and a change starts the game again. The joypad device itself is
+     "Automatic (from ROM database)".
+
+diff --git a/src/common/JoyMap.cxx b/src/common/JoyMap.cxx
+index cab6734..68ae59e 100644
+--- a/src/common/JoyMap.cxx
++++ b/src/common/JoyMap.cxx
+@@ -161,7 +161,7 @@ string JoyMap::getEventMappingDesc(int stick, Event::Type event,
+   {
+     if (_event == event && _mapping.mode == mode)
+     {
+-      if(!buf.view().empty())
++      if(!buf.str().empty())
+         buf << ", ";
+       buf << "C" << stick << getDesc(event, _mapping);
+     }
+diff --git a/src/common/KeyMap.cxx b/src/common/KeyMap.cxx
+index 460087e..556e482 100644
+--- a/src/common/KeyMap.cxx
++++ b/src/common/KeyMap.cxx
+@@ -195,7 +195,7 @@ string KeyMap::getEventMappingDesc(Event::Type event, EventMode mode) const
+   {
+     if (_event == event && _mapping.mode == mode)
+     {
+-      if(!buf.view().empty())
++      if(!buf.str().empty())
+         buf << ", ";
+       buf << getDesc(_mapping);
+     }
+diff --git a/src/common/MouseControl.cxx b/src/common/MouseControl.cxx
+index 5378014..89c3410 100644
+--- a/src/common/MouseControl.cxx
++++ b/src/common/MouseControl.cxx
+@@ -107,7 +107,7 @@ MouseControl::MouseControl(Console& console, string_view mode)
+     msg << ", Y-axis is ";
+     MControlToController(yaxis, ytype, yid);
+ 
+-    myModeList.emplace_back(xtype, xid, ytype, yid, msg.view());
++    myModeList.emplace_back(xtype, xid, ytype, yid, msg.str());
+   }
+ 
+   // Now consider the possible modes for the mouse based on the left
+@@ -174,7 +174,7 @@ void MouseControl::addLeftControllerModes(bool noswap)
+       msg << "Mouse is left " << myLeftController.name() << " controller";
+       const Controller::Type type = myLeftController.type();
+       const int id = noswap ? 0 : 1;
+-      myModeList.emplace_back(type, id, type, id, msg.view());
++      myModeList.emplace_back(type, id, type, id, msg.str());
+     }
+   }
+ }
+@@ -195,7 +195,7 @@ void MouseControl::addRightControllerModes(bool noswap)
+       msg << "Mouse is right " << myRightController.name() << " controller";
+       const Controller::Type type = myRightController.type();
+       const int id = noswap ? 1 : 0;
+-      myModeList.emplace_back(type, id, type, id, msg.view());
++      myModeList.emplace_back(type, id, type, id, msg.str());
+     }
+   }
+ }
+@@ -206,11 +206,11 @@ void MouseControl::addPaddleModes(int lport, int rport, int lname, int rname)
+   const Controller::Type type = Controller::Type::Paddles;
+   ostringstream msg;
+   msg << "Mouse is Paddle " << lname << " controller";
+-  const MouseMode mode0(type, lport, type, lport, msg.view());
++  const MouseMode mode0(type, lport, type, lport, msg.str());
+ 
+   msg.str("");
+   msg << "Mouse is Paddle " << rname << " controller";
+-  const MouseMode mode1(type, rport, type, rport, msg.view());
++  const MouseMode mode1(type, rport, type, rport, msg.str());
+ 
+   if(BSPF::equalsIgnoreCase(myProps.get(PropType::Controller_SwapPaddles), "NO"))
+   {
 diff --git a/src/common/PJoystickHandler.cxx b/src/common/PJoystickHandler.cxx
-index d21bdef..f00829f 100644
+index d21bdef..c742c03 100644
 --- a/src/common/PJoystickHandler.cxx
 +++ b/src/common/PJoystickHandler.cxx
 @@ -18,7 +18,6 @@
@@ -22,7 +110,121 @@ index d21bdef..f00829f 100644
  #include "Driving.hxx"
  #include "Settings.hxx"
  #include "EventHandler.hxx"
-@@ -1277,21 +1276,8 @@ void PhysicalJoystickHandler::changeMousePaddleSensitivity(int direction)
+@@ -117,7 +116,7 @@ int PhysicalJoystickHandler::add(const PhysicalJoystickPtr& stick)
+     {
+       ostringstream name;
+       name << stick->name << " #" << count+1;
+-      stick->name = name.view();
++      stick->name = name.str();
+     }
+     stick->type = PhysicalJoystick::Type::REGULAR;
+   }
+@@ -175,7 +174,7 @@ void PhysicalJoystickHandler::addToDatabase(const PhysicalJoystickPtr& stick)
+   ostringstream buf;
+   buf << "Added joystick " << stick->ID << ":\n"
+     << "  " << stick->about() << '\n';
+-  Logger::info(buf.view());
++  Logger::info(buf.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -196,7 +195,7 @@ bool PhysicalJoystickHandler::remove(int id)
+       ostringstream buf;
+       buf << "Removed joystick " << mySticks[id]->ID << ":\n"
+           << "  " << mySticks[id]->about() << '\n';
+-      Logger::info(buf.view());
++      Logger::info(buf.str());
+ 
+       // Remove joystick, but remember mapping
+       it->second.mapping = stick->getMap();
+@@ -264,7 +263,7 @@ bool PhysicalJoystickHandler::mapStelladaptors(string_view saport, int ID)
+       ostringstream buf;
+       buf << "Erased joystick " << _stick->ID << ":\n"
+         << "  " << _stick->about() << '\n';
+-      Logger::info(buf.view());
++      Logger::info(buf.str());
+ 
+       _stick->name.erase(pos);
+       erased = true;
+@@ -808,7 +807,7 @@ string PhysicalJoystickHandler::getMappingDesc(Event::Type event, EventMode mode
+       //Joystick mapping / labeling
+       if(!_joyptr->joyMap.getEventMapping(event, evMode).empty())
+       {
+-        if(!buf.view().empty())
++        if(!buf.str().empty())
+           buf << ", ";
+         buf << _joyptr->joyMap.getEventMappingDesc(_id, event, evMode);
+       }
+@@ -1134,7 +1133,7 @@ void PhysicalJoystickHandler::changeDigitalDeadZone(int direction)
+   ss << std::round(Controller::digitalDeadZoneValue(deadZone) * 100.F / 32768) << "%";
+ 
+   myOSystem.frameBuffer().showGaugeMessage(
+-    "Digital controller dead zone", ss.view(), deadZone,
++    "Digital controller dead zone", ss.str(), deadZone,
+     Controller::MIN_DIGITAL_DEADZONE, Controller::MAX_DIGITAL_DEADZONE);
+ }
+ 
+@@ -1152,7 +1151,7 @@ void PhysicalJoystickHandler::changeAnalogPaddleDeadZone(int direction)
+   ss << std::round(Controller::analogDeadZoneValue(deadZone) * 100.F / 32768) << "%";
+ 
+   myOSystem.frameBuffer().showGaugeMessage(
+-    "Analog controller dead zone", ss.view(), deadZone,
++    "Analog controller dead zone", ss.str(), deadZone,
+     Controller::MIN_ANALOG_DEADZONE, Controller::MAX_ANALOG_DEADZONE);
+ }
+ 
+@@ -1170,7 +1169,7 @@ void PhysicalJoystickHandler::changeAnalogPaddleSensitivity(int direction)
+   ss << std::round(Paddles::analogSensitivityValue(sense) * 100.F) << "%";
+ 
+   myOSystem.frameBuffer().showGaugeMessage(
+-    "Analog paddle sensitivity", ss.view(), sense,
++    "Analog paddle sensitivity", ss.str(), sense,
+     Paddles::MIN_ANALOG_SENSE, Paddles::MAX_ANALOG_SENSE);
+ }
+ 
+@@ -1191,7 +1190,7 @@ void PhysicalJoystickHandler::changeAnalogPaddleLinearity(int direction)
+     ss << "Off";
+ 
+   myOSystem.frameBuffer().showGaugeMessage(
+-    "Analog paddle linearity", ss.view(), linear,
++    "Analog paddle linearity", ss.str(), linear,
+     Paddles::MIN_ANALOG_LINEARITY, Paddles::MAX_ANALOG_LINEARITY);
+ }
+ 
+@@ -1212,7 +1211,7 @@ void PhysicalJoystickHandler::changePaddleDejitterAveraging(int direction)
+     ss << "Off";
+ 
+   myOSystem.frameBuffer().showGaugeMessage(
+-    "Analog paddle dejitter averaging", ss.view(), dejitter,
++    "Analog paddle dejitter averaging", ss.str(), dejitter,
+     Paddles::MIN_DEJITTER, Paddles::MAX_DEJITTER);
+ }
+ 
+@@ -1233,7 +1232,7 @@ void PhysicalJoystickHandler::changePaddleDejitterReaction(int direction)
+     ss << "Off";
+ 
+   myOSystem.frameBuffer().showGaugeMessage(
+-    "Analog paddle dejitter reaction", ss.view(), dejitter,
++    "Analog paddle dejitter reaction", ss.str(), dejitter,
+     Paddles::MIN_DEJITTER, Paddles::MAX_DEJITTER);
+ }
+ 
+@@ -1254,7 +1253,7 @@ void PhysicalJoystickHandler::changeDigitalPaddleSensitivity(int direction)
+     ss << "Off";
+ 
+   myOSystem.frameBuffer().showGaugeMessage(
+-    "Digital sensitivity", ss.view(), sense,
++    "Digital sensitivity", ss.str(), sense,
+     Paddles::MIN_DIGITAL_SENSE, Paddles::MAX_DIGITAL_SENSE);
+ }
+ 
+@@ -1272,26 +1271,13 @@ void PhysicalJoystickHandler::changeMousePaddleSensitivity(int direction)
+   ss << sense * 10 << "%";
+ 
+   myOSystem.frameBuffer().showGaugeMessage(
+-    "Mouse paddle sensitivity", ss.view(), sense,
++    "Mouse paddle sensitivity", ss.str(), sense,
+     Controller::MIN_MOUSE_SENSE, Controller::MAX_MOUSE_SENSE);
  }
  
  // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -45,10 +247,59 @@ index d21bdef..f00829f 100644
  }
  
  // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -1308,7 +1294,7 @@ void PhysicalJoystickHandler::changeDrivingSensitivity(int direction)
+   ss << sense * 10 << "%";
+ 
+   myOSystem.frameBuffer().showGaugeMessage(
+-    "Driving controller sensitivity", ss.view(), sense,
++    "Driving controller sensitivity", ss.str(), sense,
+     Driving::MIN_SENSE, Driving::MAX_SENSE);
+ }
+ 
+diff --git a/src/common/PKeyboardHandler.cxx b/src/common/PKeyboardHandler.cxx
+index a5c53b0..02b6b4f 100644
+--- a/src/common/PKeyboardHandler.cxx
++++ b/src/common/PKeyboardHandler.cxx
+@@ -613,7 +613,7 @@ void PhysicalKeyboardHandler::toggleModKeys(bool toggle)
+   ostringstream ss;
+   ss << "Modifier key combos ";
+   ss << (modCombo ? "enabled" : "disabled");
+-  myOSystem.frameBuffer().showTextMessage(ss.view());
++  myOSystem.frameBuffer().showTextMessage(ss.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 diff --git a/src/common/PaletteHandler.cxx b/src/common/PaletteHandler.cxx
-index 6e39ce5..ce29348 100644
+index 6e39ce5..30398cf 100644
 --- a/src/common/PaletteHandler.cxx
 +++ b/src/common/PaletteHandler.cxx
+@@ -112,7 +112,7 @@ void PaletteHandler::showAdjustableMessage()
+         myOSystem.console().timing() == ConsoleTiming::pal ? myPhasePAL : myPhaseNTSC;
+     buf << std::fixed << std::setprecision(1) << value << DEGREE;
+     myOSystem.frameBuffer().showGaugeMessage(
+-        "Palette phase shift", buf.view(), value,
++        "Palette phase shift", buf.str(), value,
+         (isNTSC ? DEF_NTSC_SHIFT : DEF_PAL_SHIFT) - MAX_PHASE_SHIFT,
+         (isNTSC ? DEF_NTSC_SHIFT : DEF_PAL_SHIFT) + MAX_PHASE_SHIFT);
+   }
+@@ -122,7 +122,7 @@ void PaletteHandler::showAdjustableMessage()
+ 
+     buf << std::fixed << std::setprecision(1) << value << DEGREE;
+     myOSystem.frameBuffer().showGaugeMessage(
+-      msg.view(), buf.view(), value, -MAX_RGB_SHIFT, +MAX_RGB_SHIFT);
++      msg.str(), buf.str(), value, -MAX_RGB_SHIFT, +MAX_RGB_SHIFT);
+   }
+   else
+   {
+@@ -131,7 +131,7 @@ void PaletteHandler::showAdjustableMessage()
+       : scaleTo100(*myAdjustables[myCurrentAdjustable].value);
+     buf << value << "%";
+     myOSystem.frameBuffer().showGaugeMessage(
+-      msg.view(), buf.view(), value);
++      msg.str(), buf.str(), value);
+   }
+ }
+ 
 @@ -325,7 +325,7 @@ void PaletteHandler::setPalette()
      static constexpr BSPF::array2D<const PaletteArray*, PaletteType::NumTypes,
      static_cast<int>(ConsoleTiming::numTimings)> palettes = {{
@@ -188,6 +439,197 @@ index 980958a..c0d5fa8 100644
  
      // Table of RGB values for NTSC, PAL and SECAM - user-defined
      static PaletteArray ourUserNTSCPalette;
+diff --git a/src/common/RewindManager.cxx b/src/common/RewindManager.cxx
+index da5b456..6ba980b 100644
+--- a/src/common/RewindManager.cxx
++++ b/src/common/RewindManager.cxx
+@@ -239,7 +239,7 @@ string RewindManager::saveAllStates()
+       << myOSystem.console().properties().get(PropType::Cart_Name)
+       << ".sta";
+ 
+-    Serializer out(buf.view(), Serializer::Mode::ReadWriteTrunc);
++    Serializer out(buf.str(), Serializer::Mode::ReadWriteTrunc);
+     if (!out)
+       return "Can't save to all states file";
+ 
+@@ -296,7 +296,7 @@ string RewindManager::loadAllStates()
+       << ".sta";
+ 
+     // Make sure the file can be opened for reading
+-    const Serializer in(buf.view(), Serializer::Mode::ReadOnly);
++    const Serializer in(buf.str(), Serializer::Mode::ReadOnly);
+     if (!in)
+       return "Can't load from all states file";
+ 
+diff --git a/src/common/StaggeredLogger.cxx b/src/common/StaggeredLogger.cxx
+index 0e007eb..770508a 100644
+--- a/src/common/StaggeredLogger.cxx
++++ b/src/common/StaggeredLogger.cxx
+@@ -84,7 +84,7 @@ void StaggeredLogger::logLine()
+       << millisecondsSinceIntervalStart << "  milliseconds"
+     << ")";
+ 
+-  Logger::log(ss.view(), myLevel);
++  Logger::log(ss.str(), myLevel);
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+diff --git a/src/common/StateManager.cxx b/src/common/StateManager.cxx
+index 599f6c5..e80b508 100644
+--- a/src/common/StateManager.cxx
++++ b/src/common/StateManager.cxx
+@@ -207,12 +207,12 @@ void StateManager::loadState(int slot)
+         << ".st" << slot;
+ 
+     // Make sure the file can be opened in read-only mode
+-    Serializer in(buf.view(), Serializer::Mode::ReadOnly);
++    Serializer in(buf.str(), Serializer::Mode::ReadOnly);
+     if(!in)
+     {
+       buf.str("");
+       buf << "Can't open/load from state file " << slot;
+-      myOSystem.frameBuffer().showTextMessage(buf.view());
++      myOSystem.frameBuffer().showTextMessage(buf.str());
+       return;
+     }
+ 
+@@ -236,7 +236,7 @@ void StateManager::loadState(int slot)
+       buf << "Invalid data in state " << slot << " file";
+     }
+ 
+-    myOSystem.frameBuffer().showTextMessage(buf.view());
++    myOSystem.frameBuffer().showTextMessage(buf.str());
+   }
+ }
+ 
+@@ -253,12 +253,12 @@ void StateManager::saveState(int slot)
+         << ".st" << slot;
+ 
+     // Make sure the file can be opened for writing
+-    Serializer out(buf.view(), Serializer::Mode::ReadWriteTrunc);
++    Serializer out(buf.str(), Serializer::Mode::ReadWriteTrunc);
+     if(!out)
+     {
+       buf.str("");
+       buf << "Can't open/save to state file " << slot;
+-      myOSystem.frameBuffer().showTextMessage(buf.view());
++      myOSystem.frameBuffer().showTextMessage(buf.str());
+       return;
+     }
+ 
+@@ -271,7 +271,7 @@ void StateManager::saveState(int slot)
+     catch(...)
+     {
+       buf << "Error saving state " << slot;
+-      myOSystem.frameBuffer().showTextMessage(buf.view());
++      myOSystem.frameBuffer().showTextMessage(buf.str());
+       return;
+     }
+ 
+@@ -289,7 +289,7 @@ void StateManager::saveState(int slot)
+     else
+       buf << "Error saving state " << slot;
+ 
+-    myOSystem.frameBuffer().showTextMessage(buf.view());
++    myOSystem.frameBuffer().showTextMessage(buf.str());
+   }
+ }
+ 
+@@ -304,7 +304,7 @@ void StateManager::changeState(int direction)
+     buf << "Changed to state slot " << myCurrentSlot;
+   else
+     buf << "State slot " << myCurrentSlot;
+-  myOSystem.frameBuffer().showTextMessage(buf.view());
++  myOSystem.frameBuffer().showTextMessage(buf.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -315,7 +315,7 @@ void StateManager::toggleAutoSlot()
+   // Print appropriate message
+   ostringstream buf;
+   buf << "Automatic slot change " << (autoSlot ? "enabled" : "disabled");
+-  myOSystem.frameBuffer().showTextMessage(buf.view());
++  myOSystem.frameBuffer().showTextMessage(buf.str());
+ 
+   myOSystem.settings().setValue("autoslot", autoSlot);
+ }
+diff --git a/src/common/Variant.hxx b/src/common/Variant.hxx
+index 9997629..48c5c88 100644
+--- a/src/common/Variant.hxx
++++ b/src/common/Variant.hxx
+@@ -49,13 +49,13 @@ class Variant
+     Variant(string_view s) : data{s} { }
+     Variant(const char* s) : data{s} { }
+ 
+-    Variant(Int32 i)  { buf().str(""); buf() << i; data = buf().view(); }
+-    Variant(uInt32 i) { buf().str(""); buf() << i; data = buf().view(); }
+-    Variant(float f)  { buf().str(""); buf() << f; data = buf().view(); }
+-    Variant(double d) { buf().str(""); buf() << d; data = buf().view(); }
+-    Variant(bool b)   { buf().str(""); buf() << b; data = buf().view(); }
+-    Variant(const Common::Size& s) { buf().str(""); buf() << s; data = buf().view(); }
+-    Variant(const Common::Point& s) { buf().str(""); buf() << s; data = buf().view(); }
++    Variant(Int32 i)  { buf().str(""); buf() << i; data = buf().str(); }
++    Variant(uInt32 i) { buf().str(""); buf() << i; data = buf().str(); }
++    Variant(float f)  { buf().str(""); buf() << f; data = buf().str(); }
++    Variant(double d) { buf().str(""); buf() << d; data = buf().str(); }
++    Variant(bool b)   { buf().str(""); buf() << b; data = buf().str(); }
++    Variant(const Common::Size& s) { buf().str(""); buf() << s; data = buf().str(); }
++    Variant(const Common::Point& s) { buf().str(""); buf() << s; data = buf().str(); }
+ 
+     // Conversion methods
+     const string& toString() const { return data; }
+diff --git a/src/common/VideoModeHandler.cxx b/src/common/VideoModeHandler.cxx
+index 2cd5202..1725889 100644
+--- a/src/common/VideoModeHandler.cxx
++++ b/src/common/VideoModeHandler.cxx
+@@ -54,7 +54,7 @@ const VideoModeHandler::Mode&
+       // Overscan is not applicable in this mode
+       myMode = Mode(myImage.w, myImage.h,
+                     Mode::Stretch::Fill, myFSIndex,
+-                    desc.view(), zoom, bezelInfo);
++                    desc.str(), zoom, bezelInfo);
+     }
+     else
+     {
+diff --git a/src/common/repository/CompositeKVRJsonAdapter.cxx b/src/common/repository/CompositeKVRJsonAdapter.cxx
+index 7ef54ec..a1691ae 100644
+--- a/src/common/repository/CompositeKVRJsonAdapter.cxx
++++ b/src/common/repository/CompositeKVRJsonAdapter.cxx
+@@ -41,7 +41,7 @@ namespace {
+ 
+           if (!KeyValueRepositoryJsonFile::save(out, values)) return false;
+ 
+-          return myKvr.save(myKey, out.view());
++          return myKvr.save(myKey, out.str());
+         }
+ 
+       private:
+diff --git a/src/common/tv_filters/NTSCFilter.cxx b/src/common/tv_filters/NTSCFilter.cxx
+index dc509ef..fe4fa71 100644
+--- a/src/common/tv_filters/NTSCFilter.cxx
++++ b/src/common/tv_filters/NTSCFilter.cxx
+@@ -90,8 +90,8 @@ void NTSCFilter::selectAdjustable(int direction,
+   msg << "Custom " << ourCustomAdjustables[myCurrentAdjustable].type;
+   val << value << "%";
+ 
+-  text = msg.view();
+-  valueText = val.view();
++  text = msg.str();
++  valueText = val.str();
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -121,8 +121,8 @@ void NTSCFilter::changeCurrentAdjustable(int direction,
+   msg << "Custom " << ourCustomAdjustables[myCurrentAdjustable].type;
+   val << newValue << "%";
+ 
+-  text = msg.view();
+-  valueText = val.view();
++  text = msg.str();
++  valueText = val.str();
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 diff --git a/src/emucore/CartAR.cxx b/src/emucore/CartAR.cxx
 index 8fc1527..6914ce5 100644
 --- a/src/emucore/CartAR.cxx
@@ -271,7 +713,7 @@ index 97ea6bc..33720b4 100644
    private:
      // Following constructors and assignment operators not supported
 diff --git a/src/emucore/CartCreator.cxx b/src/emucore/CartCreator.cxx
-index 508776f..4e1ce63 100644
+index 508776f..181f6cd 100644
 --- a/src/emucore/CartCreator.cxx
 +++ b/src/emucore/CartCreator.cxx
 @@ -33,7 +33,6 @@
@@ -282,6 +724,24 @@ index 508776f..4e1ce63 100644
  #include "CartCTY.hxx"
  #include "CartCV.hxx"
  #include "CartDF.hxx"
+@@ -183,7 +182,7 @@ unique_ptr<Cartridge> CartCreator::create(const FSNode& file,
+     buf << " " << Bankswitch::typeToName(detectedType);
+   buf << ") ";
+ 
+-  cartridge->setAbout(buf.view(), Bankswitch::typeToName(type), id);
++  cartridge->setAbout(buf.str(), Bankswitch::typeToName(type), id);
+ 
+   return cartridge;
+ }
+@@ -211,7 +210,7 @@ CartCreator::createFromMultiCart(const ByteBuffer& image, size_t& size,
+   md5 = MD5::hash(slice, size);
+   ostringstream buf;
+   buf << " [G" << (i+1) << "]";
+-  id = buf.view();
++  id = buf.str();
+ 
+   // TODO: allow using ROM properties instead of autodetect only
+   if(size <= 2_KB)
 @@ -252,7 +251,7 @@ CartCreator::createFromImage(const ByteBuffer& image, size_t size,
      case _BFSC: return make_unique<CartridgeBFSC>(image, size, md5, settings);
      case _BUS:  return make_unique<CartridgeBUS>(image, size, md5, settings);
@@ -291,8 +751,42 @@ index 508776f..4e1ce63 100644
      case _CTY:  return make_unique<CartridgeCTY>(image, size, md5, settings);
      case _CV:   return make_unique<CartridgeCV>(image, size, md5, settings);
      case _DF:   return make_unique<CartridgeDF>(image, size, md5, settings);
+diff --git a/src/emucore/CartDetector.cxx b/src/emucore/CartDetector.cxx
+index cd298d8..34ffdea 100644
+--- a/src/emucore/CartDetector.cxx
++++ b/src/emucore/CartDetector.cxx
+@@ -264,7 +264,7 @@ Bankswitch::Type CartDetector::autodetectType(const ByteBuffer& image, size_t si
+ 
+   ostringstream ss;
+   ss << "Bankswitching type '" << Bankswitch::typeToDesc(type) << "' detected";
+-  Logger::debug(ss.view());
++  Logger::debug(ss.str());
+ 
+   return type;
+ }
+diff --git a/src/emucore/CartEnhanced.cxx b/src/emucore/CartEnhanced.cxx
+index 5c2e4e4..3fe071a 100644
+--- a/src/emucore/CartEnhanced.cxx
++++ b/src/emucore/CartEnhanced.cxx
+@@ -35,14 +35,14 @@ CartridgeEnhanced::CartridgeEnhanced(const ByteBuffer& image, size_t size,
+     ostringstream buf;
+     buf << "ROM larger than expected (" << size << " > " << bsSize
+         << "), truncating " << (size - bsSize) << " bytes\n";
+-    Logger::info(buf.view());
++    Logger::info(buf.str());
+   }
+   else if(size < bsSize)
+   {
+     ostringstream buf;
+     buf << "ROM smaller than expected (" << size << " < " << bsSize
+         << "), appending " << (bsSize - size) << " bytes\n";
+-    Logger::info(buf.view());
++    Logger::info(buf.str());
+   }
+ 
+   mySize = bsSize;
 diff --git a/src/emucore/Console.cxx b/src/emucore/Console.cxx
-index 55dbc9c..e5769e7 100644
+index 55dbc9c..de587e7 100644
 --- a/src/emucore/Console.cxx
 +++ b/src/emucore/Console.cxx
 @@ -21,19 +21,12 @@
@@ -315,6 +809,101 @@ index 55dbc9c..e5769e7 100644
  #include "Lightgun.hxx"
  #include "QuadTari.hxx"
  #include "Joy2BPlus.hxx"
+@@ -134,7 +127,7 @@ Console::Console(OSystem& osystem, unique_ptr<Cartridge>& cart,
+ #ifdef DEBUG_BUILD
+     ostringstream msg;
+     msg << "Phosphor effect automatically " << (enable ? "enabled" : "disabled");
+-    frameBuffer.showTextMessage(msg.view());
++    frameBuffer.showTextMessage(msg.str());
+ #endif
+   };
+   myTIA  = make_unique<TIA>(*this, [this]() { return timing(); }, myOSystem.settings(), callback);
+@@ -578,7 +571,7 @@ void Console::toggleInter(bool toggle)
+     ostringstream ss;
+ 
+     ss << "Interpolation " << (enabled ? "enabled" : "disabled");
+-    myOSystem.frameBuffer().showTextMessage(ss.view());
++    myOSystem.frameBuffer().showTextMessage(ss.str());
+   }
+   else
+     myOSystem.frameBuffer().showTextMessage(
+@@ -600,7 +593,7 @@ void Console::toggleTurbo()
+ 
+   ostringstream ss;
+   ss << "Turbo mode " << (!enabled ? "enabled" : "disabled");
+-  myOSystem.frameBuffer().showTextMessage(ss.view());
++  myOSystem.frameBuffer().showTextMessage(ss.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -625,7 +618,7 @@ void Console::changeSpeed(int direction)
+   ostringstream val;
+ 
+   val << formatSpeed(speed) << "%";
+-  myOSystem.frameBuffer().showGaugeMessage("Emulation speed", val.view(), speed, MIN_SPEED, MAX_SPEED);
++  myOSystem.frameBuffer().showGaugeMessage("Emulation speed", val.str(), speed, MIN_SPEED, MAX_SPEED);
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -648,7 +641,7 @@ void Console::togglePhosphor(bool toggle)
+ 
+   ostringstream msg;
+   msg << "Phosphor effect " << (enable ? "enabled" : "disabled");
+-  myOSystem.frameBuffer().showTextMessage(msg.view());
++  myOSystem.frameBuffer().showTextMessage(msg.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -691,7 +684,7 @@ void Console::cyclePhosphorMode(int direction)
+   }
+   ostringstream msg;
+   msg << "Phosphor mode " << MESSAGES[mode];
+-  myOSystem.frameBuffer().showTextMessage(msg.view());
++  myOSystem.frameBuffer().showTextMessage(msg.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -707,7 +700,7 @@ void Console::changePhosphor(int direction)
+ 
+   ostringstream val;
+   val << blend;
+-  myProperties.set(PropType::Display_PPBlend, val.view());
++  myProperties.set(PropType::Display_PPBlend, val.str());
+   if(blend)
+     val << "%";
+   else
+@@ -715,7 +708,7 @@ void Console::changePhosphor(int direction)
+     val.str("");
+     val << "Off";
+   }
+-  myOSystem.frameBuffer().showGaugeMessage("Phosphor blend", val.view(), blend);
++  myOSystem.frameBuffer().showGaugeMessage("Phosphor blend", val.str(), blend);
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -804,11 +797,11 @@ void Console::changeVerticalCenter(int direction)
+   ostringstream ss, val;
+   ss << vcenter;
+ 
+-  myProperties.set(PropType::Display_VCenter, ss.view());
++  myProperties.set(PropType::Display_VCenter, ss.str());
+   if (vcenter != myTIA->vcenter()) myTIA->setVcenter(vcenter);
+ 
+   val << (vcenter ? vcenter > 0 ? "+" : "" : " ") << vcenter << "px";
+-  myOSystem.frameBuffer().showGaugeMessage("V-Center", val.view(), vcenter,
++  myOSystem.frameBuffer().showGaugeMessage("V-Center", val.str(), vcenter,
+                                       myTIA->minVcenter(), myTIA->maxVcenter());
+ }
+ 
+@@ -838,7 +831,7 @@ void Console::changeVSizeAdjust(int direction)
+ 
+   val << (newAdjustVSize ? newAdjustVSize > 0 ? "+" : "" : " ")
+       << newAdjustVSize << "%";
+-  myOSystem.frameBuffer().showGaugeMessage("V-Size", val.view(), newAdjustVSize, -5, 5);
++  myOSystem.frameBuffer().showGaugeMessage("V-Size", val.str(), newAdjustVSize, -5, 5);
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 @@ -899,27 +892,6 @@ void Console::createAudioQueue()
  // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
  void Console::setControllers(string_view romMd5)
@@ -343,6 +932,24 @@ index 55dbc9c..e5769e7 100644
    {
      // Setup the controllers based on properties
      Controller::Type leftType =
+@@ -982,7 +954,7 @@ void Console::changeLeftController(int direction)
+ 
+   ostringstream msg;
+   msg << "Left controller " << Controller::getName(Controller::Type{type});
+-  myOSystem.frameBuffer().showTextMessage(msg.view());
++  myOSystem.frameBuffer().showTextMessage(msg.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -1000,7 +972,7 @@ void Console::changeRightController(int direction)
+ 
+   ostringstream msg;
+   msg << "Right controller " << Controller::getName(Controller::Type{type});
+-  myOSystem.frameBuffer().showTextMessage(msg.view());
++  myOSystem.frameBuffer().showTextMessage(msg.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 @@ -1050,18 +1022,6 @@ unique_ptr<Controller> Console::getControllerPort(
                                          swapPaddles, swapAxis, swapDir);
        break;
@@ -386,6 +993,94 @@ index 55dbc9c..e5769e7 100644
      case Controller::Type::Lightgun:
        controller = make_unique<Lightgun>
          (port, myEvent, *mySystem, romMd5, myOSystem.frameBuffer());
+@@ -1156,7 +1099,7 @@ void Console::toggleSwapPorts(bool toggle)
+ 
+   ostringstream msg;
+   msg << "Swap ports " << (swapped ? "enabled" : "disabled");
+-  myOSystem.frameBuffer().showTextMessage(msg.view());
++  myOSystem.frameBuffer().showTextMessage(msg.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -1174,7 +1117,7 @@ void Console::toggleSwapPaddles(bool toggle)
+ 
+   ostringstream msg;
+   msg << "Swap paddles " << (swapped ? "enabled" : "disabled");
+-  myOSystem.frameBuffer().showTextMessage(msg.view());
++  myOSystem.frameBuffer().showTextMessage(msg.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -1188,7 +1131,7 @@ void Console::changePaddleCenterX(int direction)
+ 
+   ostringstream val;
+   val << (center ? center > 0 ? "+" : "" : " ") << center * 5 << "px";
+-  myOSystem.frameBuffer().showGaugeMessage("Paddles x-center ", val.view(), center,
++  myOSystem.frameBuffer().showGaugeMessage("Paddles x-center ", val.str(), center,
+                                            Paddles::MIN_ANALOG_CENTER, Paddles::MAX_ANALOG_CENTER);
+ }
+ 
+@@ -1203,7 +1146,7 @@ void Console::changePaddleCenterY(int direction)
+ 
+   ostringstream val;
+   val << (center ? center > 0 ? "+" : "" : " ") << center * 5 << "px";
+-  myOSystem.frameBuffer().showGaugeMessage("Paddles y-center ", val.view(), center,
++  myOSystem.frameBuffer().showGaugeMessage("Paddles y-center ", val.str(), center,
+                                            Paddles::MIN_ANALOG_CENTER, Paddles::MAX_ANALOG_CENTER);
+ }
+ 
+@@ -1225,13 +1168,13 @@ void Console::changePaddleAxesRange(int direction)
+   control << mode;
+   if(range != 100)
+     control << " " << std::to_string(range);
+-  myProperties.set(PropType::Controller_MouseAxis, control.view());
++  myProperties.set(PropType::Controller_MouseAxis, control.str());
+ 
+   Paddles::setDigitalPaddleRange(range);
+ 
+   ostringstream val;
+   val << range << "%";
+-  myOSystem.frameBuffer().showGaugeMessage("Mouse axes range", val.view(), range);
++  myOSystem.frameBuffer().showGaugeMessage("Mouse axes range", val.str(), range);
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -1248,7 +1191,7 @@ void Console::toggleAutoFire(bool toggle)
+ 
+   ostringstream ss;
+   ss << "Autofire " << (enabled ? "enabled" : "disabled");
+-  myOSystem.frameBuffer().showTextMessage(ss.view());
++  myOSystem.frameBuffer().showTextMessage(ss.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -1275,7 +1218,7 @@ void Console::changeAutoFireRate(int direction)
+   else
+     val << "Off";
+ 
+-  myOSystem.frameBuffer().showGaugeMessage("Autofire rate", val.view(), rate, 0, isNTSC ? 30 : 25);
++  myOSystem.frameBuffer().showGaugeMessage("Autofire rate", val.str(), rate, 0, isNTSC ? 30 : 25);
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -1400,7 +1343,7 @@ void Console::changeJitterSense(int direction) const
+     myTIA->setJitterSensitivity(sensitivity);
+     myOSystem.settings().setValue(prefix + "tv.jitter_sense", sensitivity);
+     val << sensitivity;
+-    myOSystem.frameBuffer().showGaugeMessage("TV jitter sensitivity", val.view(), sensitivity,
++    myOSystem.frameBuffer().showGaugeMessage("TV jitter sensitivity", val.str(), sensitivity,
+       0, JitterEmulation::MAX_SENSITIVITY);
+   }
+   else
+@@ -1433,7 +1376,7 @@ void Console::changeJitterRecovery(int direction) const
+     myTIA->setJitterRecoveryFactor(recovery);
+     myOSystem.settings().setValue(prefix + "tv.jitter_recovery", recovery);
+     val << recovery;
+-    myOSystem.frameBuffer().showGaugeMessage("TV jitter roll", val.view(),
++    myOSystem.frameBuffer().showGaugeMessage("TV jitter roll", val.str(),
+       recovery, 0, JitterEmulation::MAX_RECOVERY);
+   }
+   else
 diff --git a/src/emucore/Console.hxx b/src/emucore/Console.hxx
 index 510b6a1..f242cc1 100644
 --- a/src/emucore/Console.hxx
@@ -408,7 +1103,7 @@ index 510b6a1..f242cc1 100644
      // The currently defined display format (NTSC/PAL/SECAM)
      string myDisplayFormat;
 diff --git a/src/emucore/EventHandler.cxx b/src/emucore/EventHandler.cxx
-index 2a95510..21c54aa 100644
+index 2a95510..20fb453 100644
 --- a/src/emucore/EventHandler.cxx
 +++ b/src/emucore/EventHandler.cxx
 @@ -26,7 +26,6 @@
@@ -427,6 +1122,122 @@ index 2a95510..21c54aa 100644
    Driving::setSensitivity(myOSystem.settings().getInt("dcsense"));
    Controller::setAutoFire(myOSystem.settings().getBool("autofire"));
    Controller::setAutoFireRate(myOSystem.settings().getInt("autofirerate"));
+@@ -151,7 +149,12 @@ void EventHandler::reset(EventHandlerState state)
+   // We wait a little while (0.5s), since 'hold' events may be present,
+   // and we want time for the ROM to process them
+   if(state == EventHandlerState::EMULATION)
++#ifdef __EMSCRIPTEN__
++    // The Emscripten build has no threads for TimerManager to wait on
++    myEvent.clear();
++#else
+     myOSystem.timer().setTimeout([&ev = myEvent]() { ev.clear(); }, 500);
++#endif
+   // Toggle 7800 mode
+   set7800Mode();
+ }
+@@ -205,7 +208,7 @@ void EventHandler::toggleAllow4JoyDirections(bool toggle)
+   ostringstream ss;
+   ss << "Allow all 4 joystick directions ";
+   ss << (joyAllow4 ? "enabled" : "disabled");
+-  myOSystem.frameBuffer().showTextMessage(ss.view());
++  myOSystem.frameBuffer().showTextMessage(ss.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -2330,7 +2333,7 @@ VariantList EventHandler::getComboList()
+     if(event < Event::Combo1 || event > Event::Combo16)
+     {
+       buf << i;
+-      VarList::push_back(l, EventHandler::ourEmulActionList[i].action, buf.view());
++      VarList::push_back(l, EventHandler::ourEmulActionList[i].action, buf.str());
+       buf.str("");
+     }
+   }
+@@ -2547,7 +2550,7 @@ void EventHandler::changeMouseControllerMode(int direction)
+ 
+   ostringstream ss;
+   ss << "Mouse controls " << MSG[i] << " devices";
+-  myOSystem.frameBuffer().showTextMessage(ss.view());
++  myOSystem.frameBuffer().showTextMessage(ss.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -2562,7 +2565,7 @@ void EventHandler::changeMouseCursor(int direction)
+   ss << "Mouse cursor visibilility: "
+     << ((cursor & 2) ? "+" : "-") << "UI, "
+     << ((cursor & 1) ? "+" : "-") << "Emulation";
+-  myOSystem.frameBuffer().showTextMessage(ss.view());
++  myOSystem.frameBuffer().showTextMessage(ss.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+diff --git a/src/emucore/FrameBuffer.cxx b/src/emucore/FrameBuffer.cxx
+index c5ffe4c..f6b80e3 100644
+--- a/src/emucore/FrameBuffer.cxx
++++ b/src/emucore/FrameBuffer.cxx
+@@ -721,7 +721,7 @@ void FrameBuffer::drawFrameStats(float framesPerSecond)
+     << "Hz => "
+     << info.DisplayFormat;
+ 
+-  myStatsMsg.surface->drawString(f, ss.view(), xPos, yPos,
++  myStatsMsg.surface->drawString(f, ss.str(), xPos, yPos,
+                                  myStatsMsg.w, color, TextAlign::Left, 0, true, kBGColor);
+ 
+   yPos += dy;
+@@ -736,7 +736,7 @@ void FrameBuffer::drawFrameStats(float framesPerSecond)
+         : myOSystem.settings().getFloat("speed"))
+     << "% speed";
+ 
+-  myStatsMsg.surface->drawString(f, ss.view(), xPos, yPos,
++  myStatsMsg.surface->drawString(f, ss.str(), xPos, yPos,
+       myStatsMsg.w, myStatsMsg.color, TextAlign::Left, 0, true, kBGColor);
+ 
+   yPos += dy;
+@@ -744,7 +744,7 @@ void FrameBuffer::drawFrameStats(float framesPerSecond)
+ 
+   ss << info.BankSwitch;
+   int xPosEnd =
+-    myStatsMsg.surface->drawString(f, ss.view(), xPos, yPos,
++    myStatsMsg.surface->drawString(f, ss.str(), xPos, yPos,
+                                    myStatsMsg.w, myStatsMsg.color, TextAlign::Left, 0, true, kBGColor);
+ 
+   if(myOSystem.settings().getBool("dev.settings"))
+@@ -760,7 +760,7 @@ void FrameBuffer::drawFrameStats(float framesPerSecond)
+       color = kDbgColorRed;
+       ss << "VSYNC!";
+     }
+-    myStatsMsg.surface->drawString(f, ss.view(), xPosEnd, yPos,
++    myStatsMsg.surface->drawString(f, ss.str(), xPosEnd, yPos,
+         myStatsMsg.w, color, TextAlign::Left, 0, true, kBGColor);
+   }
+ 
+@@ -1174,7 +1174,7 @@ void FrameBuffer::toggleFullscreen(bool toggle)
+           else
+             msg << "disabled";
+         }
+-        showTextMessage(msg.view());
++        showTextMessage(msg.str());
+       }
+       break;
+     }
+@@ -1207,7 +1207,7 @@ void FrameBuffer::toggleAdaptRefresh(bool toggle)
+     msg << (isAdaptRefresh ? "enabled" : "disabled");
+     msg << " (" << myBackend->refreshRate() << " Hz)";
+ 
+-    showTextMessage(msg.view());
++    showTextMessage(msg.str());
+   }
+ }
+ #endif
+@@ -1233,7 +1233,7 @@ void FrameBuffer::changeOverscan(int direction)
+       val << (overscan > 0 ? "+" : "" ) << overscan << "%";
+     else
+       val << "Off";
+-    myOSystem.frameBuffer().showGaugeMessage("Overscan", val.view(), overscan, 0, 10);
++    myOSystem.frameBuffer().showGaugeMessage("Overscan", val.str(), overscan, 0, 10);
+   }
+ }
+ 
 diff --git a/src/emucore/Joystick.cxx b/src/emucore/Joystick.cxx
 index 3c2fdcf..03fdfbe 100644
 --- a/src/emucore/Joystick.cxx
@@ -465,6 +1276,224 @@ index 3c2fdcf..03fdfbe 100644
  }
  
  // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+diff --git a/src/emucore/M6502.cxx b/src/emucore/M6502.cxx
+index 76dd032..d65d99a 100644
+--- a/src/emucore/M6502.cxx
++++ b/src/emucore/M6502.cxx
+@@ -133,7 +133,7 @@ inline uInt8 M6502::peek(uInt16 address, Device::AccessFlags flags)
+       stringstream msg;
+       msg << "RTrap" << (flags == DISASM_NONE ? "G[" : "[") << Common::Base::HEX2 << cond << "]"
+         << (myTrapCondNames[cond].empty() ? ": " : "If: {" + myTrapCondNames[cond] + "} ");
+-      myHitTrapInfo.message = msg.view();
++      myHitTrapInfo.message = msg.str();
+       myHitTrapInfo.address = address;
+     }
+   }
+@@ -168,7 +168,7 @@ inline void M6502::poke(uInt16 address, uInt8 value, Device::AccessFlags flags)
+       myJustHitWriteTrapFlag = true;
+       stringstream msg;
+       msg << "WTrap[" << Common::Base::HEX2 << cond << "]" << (myTrapCondNames[cond].empty() ? ":" : "If: {" + myTrapCondNames[cond] + "}");
+-      myHitTrapInfo.message = msg.view();
++      myHitTrapInfo.message = msg.str();
+       myHitTrapInfo.address = address;
+     }
+   }
+@@ -291,7 +291,7 @@ inline void M6502::_execute(uInt64 cycles, DispatchResult& result)
+ 
+                 msg << "BP: $" << Common::Base::HEX4 << PC << ", bank #"
+                     << std::dec << static_cast<int>(bank);
+-                result.setDebugger(currentCycles, msg.view(), "Breakpoint");
++                result.setDebugger(currentCycles, msg.str(), "Breakpoint");
+                 return;
+               }
+             }
+@@ -311,12 +311,12 @@ inline void M6502::_execute(uInt64 cycles, DispatchResult& result)
+           if(myLogBreaks)
+           {
+             msg << "CBP[" << Common::Base::HEX2 << cond << "]:";
+-            myDebugger->log(msg.view());
++            myDebugger->log(msg.str());
+           }
+           else
+           {
+             msg << "CBP[" << Common::Base::HEX2 << cond << "]: " << myCondBreakNames[cond];
+-            result.setDebugger(currentCycles, msg.view(), "Conditional breakpoint");
++            result.setDebugger(currentCycles, msg.str(), "Conditional breakpoint");
+             return;
+           }
+         }
+@@ -335,7 +335,7 @@ inline void M6502::_execute(uInt64 cycles, DispatchResult& result)
+       {
+         ostringstream msg;
+         msg << "conditional savestate [" << Common::Base::HEX2 << cond << "]";
+-        myDebugger->addState(msg.view());
++        myDebugger->addState(msg.str());
+       }
+ 
+       mySystem->cart().clearAllRAMAccesses();
+@@ -378,7 +378,7 @@ inline void M6502::_execute(uInt64 cycles, DispatchResult& result)
+           {
+             ostringstream msg;
+             msg << "RWP[@ $" << Common::Base::HEX4 << rwpAddr << "]: ";
+-            result.setDebugger(currentCycles, msg.view(), "Read from write port", oldPC);
++            result.setDebugger(currentCycles, msg.str(), "Read from write port", oldPC);
+             return;
+           }
+         }
+@@ -390,7 +390,7 @@ inline void M6502::_execute(uInt64 cycles, DispatchResult& result)
+           {
+             ostringstream msg;
+             msg << "WRP[@ $" << Common::Base::HEX4 << wrpAddr << "]: ";
+-            result.setDebugger(currentCycles, msg.view(), "Write to read port", oldPC);
++            result.setDebugger(currentCycles, msg.str(), "Write to read port", oldPC);
+             return;
+           }
+         }
+diff --git a/src/emucore/OSystem.cxx b/src/emucore/OSystem.cxx
+index 3166847..ec4f238 100644
+--- a/src/emucore/OSystem.cxx
++++ b/src/emucore/OSystem.cxx
+@@ -96,7 +96,7 @@ OSystem::OSystem()
+   ostringstream info;
+   info << "Build " << STELLA_BUILD << ", using " << MediaFactory::backendName()
+        << " [" << BSPF::ARCH << "]";
+-  myBuildInfo = info.view();
++  myBuildInfo = info.str();
+ 
+   mySettings = MediaFactory::createSettings();
+ 
+@@ -138,7 +138,7 @@ bool OSystem::initialize(const Settings::Options& options)
+       << myCheatFile.getShortPath() << "'\n"
+       << "Palette file:       '"
+       << myPaletteFile.getShortPath() << "'\n";
+-  Logger::info(buf.view());
++  Logger::info(buf.str());
+ 
+   // NOTE: The framebuffer MUST be created before any other object!!!
+   // Get relevant information about the video hardware
+@@ -470,7 +470,7 @@ string OSystem::createConsole(const FSNode& rom, string_view md5sum, bool newrom
+   catch(const runtime_error& e)
+   {
+     buf << "ERROR: " << e.what();
+-    Logger::error(buf.view());
++    Logger::error(buf.str());
+     return buf.str();
+   }
+ 
+@@ -517,7 +517,7 @@ string OSystem::createConsole(const FSNode& rom, string_view md5sum, bool newrom
+     if(propsFile.exists())
+       buf << "  PRO file: " << propsFile.getShortPath() << '\n';
+     buf << '\n' << getROMInfo(*myConsole);
+-    Logger::info(buf.view());
++    Logger::info(buf.str());
+ 
+     myFrameBuffer->setCursorState();
+ 
+@@ -539,14 +539,14 @@ string OSystem::createConsole(const FSNode& rom, string_view md5sum, bool newrom
+           << " - " << myConsole->cartridge().detectedType()
+           << (myConsole->cartridge().isPlusROM() ? " PlusROM " : "")
+           << " - " << myConsole->getFormatString();
+-        myFrameBuffer->showTextMessage(msg.view());
++        myFrameBuffer->showTextMessage(msg.str());
+       }
+       else if(!myLauncherUsed)
+       {
+         ostringstream msg;
+ 
+         msg << "Stella " << STELLA_VERSION;
+-        myFrameBuffer->showTextMessage(msg.view());
++        myFrameBuffer->showTextMessage(msg.str());
+       }
+     }
+ 
+diff --git a/src/emucore/PlusROM.cxx b/src/emucore/PlusROM.cxx
+index 6c2bf62..018dcae 100644
+--- a/src/emucore/PlusROM.cxx
++++ b/src/emucore/PlusROM.cxx
+@@ -117,7 +117,7 @@ class PlusROMRequest {
+           << myDestination.path
+           << ": failed";
+ 
+-        Logger::error(ss.view());
++        Logger::error(ss.str());
+ 
+         myState = State::failed;
+ 
+@@ -134,7 +134,7 @@ class PlusROMRequest {
+           << ": failed with HTTP status "
+           << response->status;
+ 
+-        Logger::error(ss.view());
++        Logger::error(ss.str());
+ 
+         myState = State::failed;
+ 
+@@ -145,7 +145,7 @@ class PlusROMRequest {
+         ostringstream ss;
+         ss << "PlusCart: request to " << myDestination.host << "/" << myDestination.path << ": invalid response";
+ 
+-        Logger::error(ss.view());
++        Logger::error(ss.str());
+ 
+         myState = State::failed;
+ 
+diff --git a/src/emucore/Settings.cxx b/src/emucore/Settings.cxx
+index 7be24c4..2cd052f 100644
+--- a/src/emucore/Settings.cxx
++++ b/src/emucore/Settings.cxx
+@@ -838,7 +838,7 @@ void Settings::usage()
+ //
+ //  if(NULL != GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi))
+ //    height = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+-  cout << buf.view() << std::flush;
++  cout << buf.str() << std::flush;
+ #endif
+ 
+ #if defined(BSPF_UNIX) || defined(BSPF_MACOS)
+diff --git a/src/emucore/TIASurface.cxx b/src/emucore/TIASurface.cxx
+index 6782652..fcab48c 100644
+--- a/src/emucore/TIASurface.cxx
++++ b/src/emucore/TIASurface.cxx
+@@ -164,7 +164,7 @@ void TIASurface::setNTSC(NTSCFilter::Preset preset, bool show)
+   }
+   myOSystem.settings().setValue("tv.filter", static_cast<int>(preset));
+ 
+-  if(show) myFB.showTextMessage(buf.view());
++  if(show) myFB.showTextMessage(buf.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -247,7 +247,7 @@ void TIASurface::changeScanlineIntensity(int direction)
+     buf << intensity << "%";
+   else
+     buf << "Off";
+-  myFB.showGaugeMessage("Scanline intensity", buf.view(), intensity);
++  myFB.showGaugeMessage("Scanline intensity", buf.str(), intensity);
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+@@ -299,7 +299,7 @@ void TIASurface::cycleScanlineMask(int direction)
+   ostringstream msg;
+ 
+   msg << "Scanline data '" << Names[i] << "'";
+-  myOSystem.frameBuffer().showTextMessage(msg.view());
++  myOSystem.frameBuffer().showTextMessage(msg.str());
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+diff --git a/src/emucore/Thumbulator.cxx b/src/emucore/Thumbulator.cxx
+index 27a2217..73a3ecd 100644
+--- a/src/emucore/Thumbulator.cxx
++++ b/src/emucore/Thumbulator.cxx
+@@ -191,7 +191,7 @@ string Thumbulator::doRun(uInt32& cycles, bool irqDrivenAudio)
+ #endif
+ #if defined(THUMB_DISS) || defined(THUMB_DBUG)
+   dump_counters();
+-  cout << statusMsg.view() << '\n';
++  cout << statusMsg.str() << '\n';
+   return statusMsg.str();
+ #else
+   return "";
 diff --git a/src/os/libretro/Makefile.common b/src/os/libretro/Makefile.common
 index eb058e8..5d23e90 100644
 --- a/src/os/libretro/Makefile.common
@@ -503,11 +1532,208 @@ index eb058e8..5d23e90 100644
  	$(CORE_DIR)/emucore/Props.cxx \
  	$(CORE_DIR)/emucore/PropsSet.cxx \
  	$(CORE_DIR)/emucore/QuadTari.cxx \
+diff --git a/src/os/libretro/StellaLIBRETRO.cxx b/src/os/libretro/StellaLIBRETRO.cxx
+index e83ab17..09c21bd 100644
+--- a/src/os/libretro/StellaLIBRETRO.cxx
++++ b/src/os/libretro/StellaLIBRETRO.cxx
+@@ -92,6 +92,10 @@ bool StellaLIBRETRO::create(bool logging)
+   settings.setValue(AudioSettings::SETTING_VOLUME, 100);
+   settings.setValue(AudioSettings::SETTING_STEREO, audio_mode);
+ 
++  // Stella's -lc and -rc: the port's controller in place of the game database's
++  settings.setValue("lc", controller_override[0]);
++  settings.setValue("rc", controller_override[1]);
++
+   const FSNode rom(rom_path);
+ 
+   if(myOSystem->createConsole(rom) != EmptyString)
+diff --git a/src/os/libretro/StellaLIBRETRO.hxx b/src/os/libretro/StellaLIBRETRO.hxx
+index 9ff6283..bc09f73 100644
+--- a/src/os/libretro/StellaLIBRETRO.hxx
++++ b/src/os/libretro/StellaLIBRETRO.hxx
+@@ -55,6 +55,17 @@ class StellaLIBRETRO
+     bool loadState(const void* data, size_t size);
+     bool saveState(void* data, size_t size) const;
+ 
++    bool isSystemReady() const { return system_ready; }
++
++    // The controller for a port ("JOYSTICK", "PADDLES", "DRIVING", or "" for Stella's own choice),
++    // used from the next create(); answers whether it changed
++    bool setControllerOverride(unsigned port, string_view type)
++    {
++      if(controller_override[port] == type) return false;
++      controller_override[port] = type;
++      return true;
++    }
++
+   public:
+     const char* getCoreName() const { return "Stella"; }
+     const char* getROMExtensions() const { return "a26|bin"; }
+@@ -191,6 +202,7 @@ class StellaLIBRETRO
+ 
+   private:
+     string video_palette{PaletteHandler::SETTING_STANDARD};
++    string controller_override[2];
+     string video_phosphor{"byrom"};
+     uInt32 video_phosphor_blend{60};
+ 
 diff --git a/src/os/libretro/libretro.cxx b/src/os/libretro/libretro.cxx
-index 13e5fc0..a26e38e 100644
+index 13e5fc0..9dbac38 100644
 --- a/src/os/libretro/libretro.cxx
 +++ b/src/os/libretro/libretro.cxx
-@@ -507,7 +507,7 @@ void retro_set_environment(retro_environment_t cb)
+@@ -37,6 +37,8 @@ static int setting_stereo;
+ static int setting_phosphor, setting_console, setting_phosphor_blend;
+ static int stella_paddle_joypad_sensitivity;
+ static int stella_paddle_analog_sensitivity;
++static int stella_paddle_analog_deadzone = 15;
++static bool stella_paddle_analog_absolute;
+ static int setting_crop_hoverscan, crop_left;
+ static NTSCFilter::Preset setting_filter;
+ static const char* setting_palette;
+@@ -46,6 +48,15 @@ static bool system_reset;
+ static unsigned input_devices[4];
+ static Controller::Type input_type[2];
+ 
++// Port devices that put a controller on the port in place of the one Stella's game database and
++// detection choose (RETRO_DEVICE_JOYPAD), numbered as in Stella's later libretro port
++#define STELLA_DEVICE_JOYSTICK RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_JOYPAD, 0)
++#define STELLA_DEVICE_PADDLES  RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_JOYPAD, 4)
++#define STELLA_DEVICE_DRIVING  RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_JOYPAD, 5)
++
++// Each paddle's dial position, for the relative mode (left A, left B, right A, right B)
++static int32_t paddle_position[4];
++
+ 
+ // TODO input:
+ // https://github.com/libretro/blueMSX-libretro/blob/master/libretro.c
+@@ -59,6 +70,28 @@ uint32_t libretro_read_rom(void* data)
+   return stella.getROMSize();
+ }
+ 
++// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
++// A stick's X axis, with the deadzone option applied
++static int32_t analog_x(int pad)
++{
++  int32_t x = input_state_cb(pad, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X);
++  if(stella_paddle_analog_deadzone && std::abs(x) < stella_paddle_analog_deadzone * 0x7fff / 100)
++    x = 0;
++  return x;
++}
++
++// Relative mode (the default): the stick turns the dial at a speed set by how far it is pushed, and the
++// dial stays where it is when the stick is let go. Absolute mode: the stick's position is the dial's.
++static int32_t paddle_axis(int pad, int32_t& position)
++{
++  const int32_t x = analog_x(pad);
++  if(stella_paddle_analog_absolute)
++    position = x;
++  else
++    position = BSPF::clamp(position + x / 50, -0x7fff, 0x7fff);
++  return position;
++}
++
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+ static void update_input()
+ {
+@@ -83,6 +116,7 @@ static void update_input()
+   {
+     using enum Controller::Type;
+     case Driving:
++      EVENT(Event::LeftDrivingAnalog, analog_x(pad));
+       MASK_EVENT(Event::LeftDrivingCCW, pad, RETRO_DEVICE_ID_JOYPAD_LEFT);
+       MASK_EVENT(Event::LeftDrivingCW, pad, RETRO_DEVICE_ID_JOYPAD_RIGHT);
+       MASK_EVENT(Event::LeftDrivingFire, pad, RETRO_DEVICE_ID_JOYPAD_B);
+@@ -92,14 +126,14 @@ static void update_input()
+       MASK_EVENT(Event::LeftPaddleAIncrease, pad, RETRO_DEVICE_ID_JOYPAD_LEFT);
+       MASK_EVENT(Event::LeftPaddleADecrease, pad, RETRO_DEVICE_ID_JOYPAD_RIGHT);
+       MASK_EVENT(Event::LeftPaddleAFire, pad, RETRO_DEVICE_ID_JOYPAD_B);
+-      EVENT(Event::LeftPaddleAAnalog, input_state_cb(pad, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X));
++      EVENT(Event::LeftPaddleAAnalog, paddle_axis(pad, paddle_position[0]));
+       pad++;
+ 
+       GET_BITMASK(pad)
+       MASK_EVENT(Event::LeftPaddleBIncrease, pad, RETRO_DEVICE_ID_JOYPAD_LEFT);
+       MASK_EVENT(Event::LeftPaddleBDecrease, pad, RETRO_DEVICE_ID_JOYPAD_RIGHT);
+       MASK_EVENT(Event::LeftPaddleBFire, pad, RETRO_DEVICE_ID_JOYPAD_B);
+-      EVENT(Event::LeftPaddleBAnalog, input_state_cb(pad, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_X));
++      EVENT(Event::LeftPaddleBAnalog, paddle_axis(pad, paddle_position[1]));
+       break;
+ 
+     case Lightgun:
+@@ -139,6 +173,7 @@ static void update_input()
+   {
+     using enum Controller::Type;
+     case Driving:
++      EVENT(Event::RightDrivingAnalog, analog_x(pad));
+       MASK_EVENT(Event::RightDrivingCCW, pad, RETRO_DEVICE_ID_JOYPAD_LEFT);
+       MASK_EVENT(Event::RightDrivingCW, pad, RETRO_DEVICE_ID_JOYPAD_RIGHT);
+       MASK_EVENT(Event::RightDrivingFire, pad, RETRO_DEVICE_ID_JOYPAD_B);
+@@ -148,14 +183,14 @@ static void update_input()
+       MASK_EVENT(Event::RightPaddleAIncrease, pad, RETRO_DEVICE_ID_JOYPAD_LEFT);
+       MASK_EVENT(Event::RightPaddleADecrease, pad, RETRO_DEVICE_ID_JOYPAD_RIGHT);
+       MASK_EVENT(Event::RightPaddleAFire, pad, RETRO_DEVICE_ID_JOYPAD_B);
+-      EVENT(Event::RightPaddleAAnalog, input_state_cb(pad, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X));
++      EVENT(Event::RightPaddleAAnalog, paddle_axis(pad, paddle_position[2]));
+       pad++;
+ 
+       GET_BITMASK(pad)
+       MASK_EVENT(Event::RightPaddleBIncrease, pad, RETRO_DEVICE_ID_JOYPAD_LEFT);
+       MASK_EVENT(Event::RightPaddleBDecrease, pad, RETRO_DEVICE_ID_JOYPAD_RIGHT);
+       MASK_EVENT(Event::RightPaddleBFire, pad, RETRO_DEVICE_ID_JOYPAD_B);
+-      EVENT(Event::RightPaddleBAnalog, input_state_cb(pad, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_X));
++      EVENT(Event::RightPaddleBAnalog, paddle_axis(pad, paddle_position[3]));
+       break;
+ 
+     case Joy2BPlus:
+@@ -387,6 +422,12 @@ static void update_variables(bool init = false)
+     }
+   }
+ 
++  RETRO_GET("stella_paddle_analog_deadzone")
++    stella_paddle_analog_deadzone = atoi(var.value);
++
++  RETRO_GET("stella_paddle_analog_absolute")
++    stella_paddle_analog_absolute = !strcmp(var.value, "enabled");
++
+   if(!init && !system_reset)
+   {
+     crop_left = setting_crop_hoverscan ? (stella.getVideoZoom() == 2 ? 26 : 8) : 0;
+@@ -414,6 +455,7 @@ static bool reset_system()
+   input_type[1] = stella.getRightControllerType();
+   stella.setPaddleJoypadSensitivity(stella_paddle_joypad_sensitivity);
+   stella.setPaddleAnalogSensitivity(stella_paddle_analog_sensitivity);
++  for(auto& position : paddle_position) position = 0;
+ 
+   system_reset = false;
+ 
+@@ -487,6 +529,9 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
+       case RETRO_DEVICE_JOYPAD:
+       case RETRO_DEVICE_ANALOG:
+       case RETRO_DEVICE_LIGHTGUN:
++      case STELLA_DEVICE_JOYSTICK:
++      case STELLA_DEVICE_PADDLES:
++      case STELLA_DEVICE_DRIVING:
+       //case RETRO_DEVICE_KEYBOARD:
+       //case RETRO_DEVICE_MOUSE:
+         input_devices[port] = device;
+@@ -496,6 +541,16 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
+         if (log_cb) log_cb(RETRO_LOG_ERROR, "%s\n", "[libretro]: Invalid device, setting type to RETRO_DEVICE_JOYPAD ...");
+         input_devices[port] = RETRO_DEVICE_JOYPAD;
+     }
++
++    // A changed controller for the first two ports starts the game again with it
++    if(port < 2)
++    {
++      const char* type = input_devices[port] == STELLA_DEVICE_JOYSTICK ? "JOYSTICK"
++                       : input_devices[port] == STELLA_DEVICE_PADDLES  ? "PADDLES"
++                       : input_devices[port] == STELLA_DEVICE_DRIVING  ? "DRIVING" : "";
++      if(stella.setControllerOverride(port, type) && stella.isSystemReady())
++        system_reset = true;
++    }
+   }
+ }
+ 
+@@ -507,7 +562,7 @@ void retro_set_environment(retro_environment_t cb)
    static struct retro_variable variables[] = {
      // Adding more variables and rearranging them is safe.
      { "stella_console", "Console display; auto|ntsc|pal|secam|ntsc50|pal60|secam60" },
@@ -516,3 +1742,49 @@ index 13e5fc0..a26e38e 100644
      { "stella_filter", "TV effects; disabled|composite|s-video|rgb|badly adjusted" },
      { "stella_ntsc_aspect", "NTSC aspect %; par|100|101|102|103|104|105|106|107|108|109|110|111|112|113|114|115|116|117|118|119|120|121|122|123|124|125|50|75|76|77|78|79|80|81|82|83|84|85|86|87|88|89|90|91|92|93|94|95|96|97|98|99" },
      { "stella_pal_aspect", "PAL aspect %; par|100|101|102|103|104|105|106|107|108|109|110|111|112|113|114|115|116|117|118|119|120|121|122|123|124|125|50|75|76|77|78|79|80|81|82|83|84|85|86|87|88|89|90|91|92|93|94|95|96|97|98|99" },
+@@ -517,6 +572,8 @@ void retro_set_environment(retro_environment_t cb)
+     { "stella_phosphor_blend", "Phosphor blend %; 60|65|70|75|80|85|90|95|100|0|5|10|15|20|25|30|35|40|45|50|55" },
+     { "stella_paddle_joypad_sensitivity", "Paddle joypad sensitivity; 3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|1|2" },
+     { "stella_paddle_analog_sensitivity", "Paddle analog sensitivity; 20|21|22|23|24|25|26|27|28|29|30|0|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19" },
++    { "stella_paddle_analog_deadzone", "Paddle analog deadzone; 15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|0|1|2|3|4|5|6|7|8|9|10|11|12|13|14" },
++    { "stella_paddle_analog_absolute", "Paddle analog absolute; disabled|enabled" },
+     { NULL, NULL },
+   };
+ 
+@@ -544,22 +601,28 @@ bool retro_load_game(const struct retro_game_info *info)
+   // Tell libretro we allow those 4 different types of devices for player 0
+   static const struct retro_controller_description player0_controller_description[] = {
+     { "None", RETRO_DEVICE_NONE },
+-    { "Joystick", RETRO_DEVICE_JOYPAD },
++    { "Automatic (from ROM database)", RETRO_DEVICE_JOYPAD },
+     { "Analog", RETRO_DEVICE_ANALOG },
+-    { "Lightgun", RETRO_DEVICE_LIGHTGUN }
++    { "Lightgun", RETRO_DEVICE_LIGHTGUN },
++    { "Joystick", STELLA_DEVICE_JOYSTICK },
++    { "Paddles", STELLA_DEVICE_PADDLES },
++    { "Driving", STELLA_DEVICE_DRIVING }
+   };
+   // Tell libretro we allow those 3 different types of devices for other players
+   static const struct retro_controller_description other_player_controller_description[] = {
+     { "None", RETRO_DEVICE_NONE },
+-    { "Joystick", RETRO_DEVICE_JOYPAD },
+-    { "Analog", RETRO_DEVICE_ANALOG }
++    { "Automatic (from ROM database)", RETRO_DEVICE_JOYPAD },
++    { "Analog", RETRO_DEVICE_ANALOG },
++    { "Joystick", STELLA_DEVICE_JOYSTICK },
++    { "Paddles", STELLA_DEVICE_PADDLES },
++    { "Driving", STELLA_DEVICE_DRIVING }
+   };
+   // Tell libretro we allow those types for 4 players
+   static const struct retro_controller_info controller_infos[5] = {
+-    { player0_controller_description, 4 },
+-    { other_player_controller_description, 3 },
+-    { other_player_controller_description, 3 },
+-    { other_player_controller_description, 3 },
++    { player0_controller_description, 7 },
++    { other_player_controller_description, 6 },
++    { other_player_controller_description, 6 },
++    { other_player_controller_description, 6 },
+     { NULL, 0 }
+   };
+ 

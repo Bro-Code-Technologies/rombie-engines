@@ -54,3 +54,11 @@
 	path = netplay/clownmdemu-libretro
 	url = https://github.com/Clownacy/clownmdemu-libretro
 	shallow = true
+[submodule "stella/RetroArch"]
+	path = stella/RetroArch
+	url = https://github.com/libretro/RetroArch.git
+	shallow = true
+[submodule "stella/stella"]
+	path = stella/stella
+	url = https://github.com/stella-emu/stella.git
+	shallow = true
