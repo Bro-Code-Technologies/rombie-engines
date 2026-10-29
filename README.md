@@ -16,17 +16,18 @@ rebuilt from here. Each release attaches a full-source archive that includes the
 | `gearsystem/` | RetroArch for Emscripten with Gearsystem, Rombie's Sega Master System and Game Gear emulator, built without the one file of Gearsystem's that comes from Genesis Plus GX (its YM2413 FM chip), which Rombie's copy replaces with Okazaki's emu2413 | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `Gearsystem`: [drhelius/Gearsystem](https://github.com/drhelius/Gearsystem) `517ddaaafbab1af7a312c2b6b6f6043275f58500` (3.9.22) · `emu2413`: [digital-sound-antiques/emu2413](https://github.com/digital-sound-antiques/emu2413) `2e4f6f9752f43cc33572c6636ca31a647600732c` (1.6.2) | GPL-3.0-or-later (RetroArch, Gearsystem and this repo's replacement files) with MIT (emu2413) | `public/cores/gearsystem_libretro.js`, `.wasm` |
 | `stella/` | RetroArch for Emscripten with Stella, Rombie's Atari 2600 emulator, with a patch of Rombie's that leaves out the code Stella took from z26, lets it build and run in the browser, and brings over two input features of Stella's later libretro port | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `stella`: [stella-emu/stella](https://github.com/stella-emu/stella) `c4016ea4891cb0f90979cb35182214af4c1cb4e7` (7.0c) | GPL-3.0-or-later (RetroArch) with GPL-2.0-or-later (Stella) | `public/cores/stella_libretro.js`, `.wasm` |
 | `prosystem/` | RetroArch for Emscripten with ProSystem, Rombie's Atari 7800 emulator, built without a patch | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `prosystem-libretro`: [libretro/prosystem-libretro](https://github.com/libretro/prosystem-libretro) `8a88014287c7a01cd568067e5a557d0a2b2a051f` (1.3e) | GPL-3.0-or-later (RetroArch) with GPL-2.0-or-later (ProSystem) | `public/cores/prosystem_libretro.js`, `.wasm` |
+| `handy/` | RetroArch for Emscripten with Handy, Rombie's Atari Lynx emulator, with a patch of Rombie's that leaves out the loader decryption of Handy's emulated boot ROM (a file that states no license), so a cart starts only with the player's own `lynxboot.img` | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `libretro-handy`: [libretro/libretro-handy](https://github.com/libretro/libretro-handy) `bc55d462f0b2d6b073ea93dc552ebd73cec60fd1` (0.97) | GPL-3.0-or-later (RetroArch) with zlib (Handy) | `public/cores/handy_libretro.js`, `.wasm` |
 
 `netplay/`'s own README describes the engine, its messages and its checks.
 
 ## Which Rombie release used what
 
-| Rombie | `snes/` | `mgba-link/` | `netplay/` | `clownmdemu/` | `gearsystem/` | `stella/` | `prosystem/` |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026.0.9 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.1` | none | none | none | none |
-| 2026.0.8 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.0` | none | none | none | none |
-| 2026.0.7 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | none | none | none | none | none |
-| 2026.0.0 to 2026.0.6 | none (SNES ran snes9x from jsDelivr) | `rombie-link-cable-engine-2026.0.0` (the same files) | none | none | none | none | none |
+| Rombie | `snes/` | `mgba-link/` | `netplay/` | `clownmdemu/` | `gearsystem/` | `stella/` | `prosystem/` | `handy/` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026.0.9 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.1` | none | none | none | none | none |
+| 2026.0.8 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.0` | none | none | none | none | none |
+| 2026.0.7 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | none | none | none | none | none | none |
+| 2026.0.0 to 2026.0.6 | none (SNES ran snes9x from jsDelivr) | `rombie-link-cable-engine-2026.0.0` (the same files) | none | none | none | none | none | none |
 
 ## The files and their SHA-256
 
@@ -35,6 +36,13 @@ rebuilt from here. Each release attaches a full-source archive that includes the
 ```
 f2d072805fd51de3fd2115e2d0036df99ae5567805b884ed222ad086690c370a  mednafen_supafaust_libretro.wasm
 df3497e4fbf0fe148cec20abd42821fdc1aeb98da4c278bfb60036b1f4e23032  mednafen_supafaust_libretro.js
+```
+
+`rombie-handy-engine-2026.0.0`:
+
+```
+90077fd5f0132a560cb0783ca4721830f14c462b65bb7cda60a82a9574b88cb9  handy_libretro.js
+0a870be6d4f7a019752a019c7f99e9aa69d4540188bc97153ccc119c69ea9808  handy_libretro.wasm
 ```
 
 `rombie-prosystem-engine-2026.0.0`:
@@ -233,6 +241,25 @@ the core name `prosystem` to the core's library name, `ProSystem`, the folder Re
 ProSystem plays with no BIOS file: it loads `7800 BIOS (U).rom` or `7800 BIOS (E).rom` from the system folder only
 when one is there. It exposes no save RAM, so a game keeps only its save states.
 
+**Atari Lynx (Handy)**
+
+```sh
+git submodule update --init handy/RetroArch handy/libretro-handy
+docker build -t rombie-handy handy
+docker run --rm -v "${PWD}:/repo" rombie-handy sh /repo/handy/build.sh
+```
+
+The output lands in `handy/out/` with its `SHA256SUMS`, and matches the hashes above byte for byte (a second build,
+from fresh clones of both submodules, gave the same files). The build follows libretro's own recipe in the same
+Emscripten 3.1.46 image as `snes/`, with RetroArch without 7-Zip support (`HAVE_7ZIP=0`). Handy throws no C++
+exceptions, so it needs no exception flags. Nostalgist maps the core name `handy` to the core's library name, `Handy`,
+the folder RetroArch keeps its saves and save states in. `patches/handy.patch`, whose header lists it in full, leaves
+out `lynx/lynxdec.cpp`, the decryption of a cart's loader that Handy's emulated boot ROM uses when it has no
+`lynxboot.img`: the file states no license. `build.sh` also deletes it from its copy. So a cart starts only with a
+valid `lynxboot.img` (512 bytes, passing Handy's CRC check) in the system folder; without one the core refuses to load
+it. A BS93 homebrew file loads straight into RAM and needs none. A game with an EEPROM keeps its in-game save in
+`<content name>.eeprom` in the save folder, which Handy writes on reset and when the core shuts down.
+
 **Link Cable's mGBA**
 
 ```sh
@@ -262,10 +289,10 @@ Each engine is released on its own, named like Rombie's PS2 engine: tag `rombie-
 (`rombie-snes-engine-2026.0.0` for `snes/`, `rombie-link-cable-engine-2026.0.0` for `mgba-link/`,
 `rombie-netplay-engine-2026.0.0` for `netplay/`, `rombie-clownmdemu-engine-2026.0.0` for `clownmdemu/`,
 `rombie-gearsystem-engine-2026.0.0` for `gearsystem/`, `rombie-stella-engine-2026.0.0` for `stella/`,
-`rombie-prosystem-engine-2026.0.0` for `prosystem/`), release name
+`rombie-prosystem-engine-2026.0.0` for `prosystem/`, `rombie-handy-engine-2026.0.0` for `handy/`), release name
 "Rombie SNES Engine 2026.0.0", "Rombie Link Cable Engine 2026.0.0", "Rombie Netplay Engine 2026.0.0", "Rombie ClownMDEmu
-Engine 2026.0.0", "Rombie Gearsystem Engine 2026.0.0", "Rombie Stella Engine 2026.0.0" or "Rombie ProSystem Engine
-2026.0.0". Versions are year-based (`YYYY.N.patch`).
+Engine 2026.0.0", "Rombie Gearsystem Engine 2026.0.0", "Rombie Stella Engine 2026.0.0", "Rombie ProSystem Engine
+2026.0.0" or "Rombie Handy Engine 2026.0.0". Versions are year-based (`YYYY.N.patch`).
 Each release attaches the full-source archive that `make-source-archive.sh` makes: this repo's files for that
 folder at the tag, plus its submodules at the pinned commits.
 
@@ -281,8 +308,8 @@ byte the shipped one.
 
 `LICENSES/` holds the full texts: `GPL-3.0.txt` (RetroArch's `COPYING`), `GPL-2.0.txt` (Supafaust's `COPYING`),
 `MPL-2.0.txt` (mGBA's `LICENSE`), `AGPL-3.0.txt` (ClownMDEmu's `LICENCE.txt`) `emu2413-MIT.txt` (emu2413's `LICENSE`), `LGPL-2.1.txt` (the text Blip_Buffer and Sms_Snd_Emu's headers refer to, which Gearsystem
-does not carry; it is the SPDX License List's `LGPL-2.1-only` text) and `bupboop-zlib.txt` (ProSystem's
-`bupboop/License.txt`, with LF line endings), each
+does not carry; it is the SPDX License List's `LGPL-2.1-only` text), `bupboop-zlib.txt` (ProSystem's
+`bupboop/License.txt`) and `handy-zlib.txt` (Handy's `lynx/license.txt`), the last two with LF line endings, each
 copied from the project at the pinned commit where it has one (Gearsystem's own `LICENSE` is the same text as `GPL-3.0.txt`). Every upstream project stays under its own license. The files written for this repo (build scripts,
 Dockerfile, patches, this README) are under the license of what they build: GPL-3.0-or-later in `snes/` and at the
 root, except the Supafaust patch, which stays under Supafaust's GPL-2.0-or-later, MPL-2.0 in `mgba-link/`,
@@ -307,5 +334,11 @@ printing of `GPL-2.0.txt`). The ProSystem build compiles in, under their own lic
 (version 2 of the GNU Library General Public License, whose section 3 lets them go under the GPL, and so under version 3
 with RetroArch; their legend stays in the source), Osman Celimli's CoreTone (zlib, `bupboop-zlib.txt`) and libretro-common
 (MIT).
+In `handy/` the files are GPL-3.0-or-later (RetroArch's), beside Handy, which is zlib (`handy-zlib.txt`: "Copyright (c)
+2004 K. Wilkins", in every `lynx/` file with a header; the repo has no license file of its own). The Handy build
+compiles in, under their own licenses: Blip_Buffer 0.4.1 (LGPL-2.1-or-later) and Stereo_Buffer 0.3.0
+(GPL-2.0-or-later). `patches/handy.patch` is a change to Handy and stays under its zlib license; its header and a
+"Changed for Rombie" comment at each change mark the altered files, as zlib asks. `lynx/lynxdec.cpp`, which states no
+license, is not in the build.
 pcsx_rearmed's `COPYING` is GPL-2.0 as well; the BSD-3-Clause and public-domain parts it compiles in are listed in
 `netplay/README.md`.

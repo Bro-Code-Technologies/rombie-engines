@@ -70,3 +70,11 @@
 	path = prosystem/prosystem-libretro
 	url = https://github.com/libretro/prosystem-libretro.git
 	shallow = true
+[submodule "handy/RetroArch"]
+	path = handy/RetroArch
+	url = https://github.com/libretro/RetroArch.git
+	shallow = true
+[submodule "handy/libretro-handy"]
+	path = handy/libretro-handy
+	url = https://github.com/libretro/libretro-handy.git
+	shallow = true
