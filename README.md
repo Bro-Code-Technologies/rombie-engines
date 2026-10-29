@@ -15,17 +15,18 @@ rebuilt from here. Each release attaches a full-source archive that includes the
 | `clownmdemu/` | RetroArch for Emscripten with ClownMDEmu, Rombie's Sega Genesis and Sega CD emulator, with a patch of Rombie's that puts the pads' and multitap adapters' state into a saved state | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `clownmdemu-libretro`: [Clownacy/clownmdemu-libretro](https://github.com/Clownacy/clownmdemu-libretro) `f8395036544d806ebc68fd110a5621c49991a91d` (v1.6.12), with its own submodules | GPL-3.0-or-later (RetroArch) with AGPL-3.0-or-later (ClownMDEmu) | `public/cores/ClownMDEmu_libretro.js`, `.wasm` |
 | `gearsystem/` | RetroArch for Emscripten with Gearsystem, Rombie's Sega Master System and Game Gear emulator, built without the one file of Gearsystem's that comes from Genesis Plus GX (its YM2413 FM chip), which Rombie's copy replaces with Okazaki's emu2413 | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `Gearsystem`: [drhelius/Gearsystem](https://github.com/drhelius/Gearsystem) `517ddaaafbab1af7a312c2b6b6f6043275f58500` (3.9.22) · `emu2413`: [digital-sound-antiques/emu2413](https://github.com/digital-sound-antiques/emu2413) `2e4f6f9752f43cc33572c6636ca31a647600732c` (1.6.2) | GPL-3.0-or-later (RetroArch, Gearsystem and this repo's replacement files) with MIT (emu2413) | `public/cores/gearsystem_libretro.js`, `.wasm` |
 | `stella/` | RetroArch for Emscripten with Stella, Rombie's Atari 2600 emulator, with a patch of Rombie's that leaves out the code Stella took from z26, lets it build and run in the browser, and brings over two input features of Stella's later libretro port | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `stella`: [stella-emu/stella](https://github.com/stella-emu/stella) `c4016ea4891cb0f90979cb35182214af4c1cb4e7` (7.0c) | GPL-3.0-or-later (RetroArch) with GPL-2.0-or-later (Stella) | `public/cores/stella_libretro.js`, `.wasm` |
+| `prosystem/` | RetroArch for Emscripten with ProSystem, Rombie's Atari 7800 emulator, built without a patch | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `prosystem-libretro`: [libretro/prosystem-libretro](https://github.com/libretro/prosystem-libretro) `8a88014287c7a01cd568067e5a557d0a2b2a051f` (1.3e) | GPL-3.0-or-later (RetroArch) with GPL-2.0-or-later (ProSystem) | `public/cores/prosystem_libretro.js`, `.wasm` |
 
 `netplay/`'s own README describes the engine, its messages and its checks.
 
 ## Which Rombie release used what
 
-| Rombie | `snes/` | `mgba-link/` | `netplay/` | `clownmdemu/` | `gearsystem/` | `stella/` |
-| --- | --- | --- | --- | --- | --- | --- |
-| 2026.0.9 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.1` | none | none | none |
-| 2026.0.8 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.0` | none | none | none |
-| 2026.0.7 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | none | none | none | none |
-| 2026.0.0 to 2026.0.6 | none (SNES ran snes9x from jsDelivr) | `rombie-link-cable-engine-2026.0.0` (the same files) | none | none | none | none |
+| Rombie | `snes/` | `mgba-link/` | `netplay/` | `clownmdemu/` | `gearsystem/` | `stella/` | `prosystem/` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026.0.9 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.1` | none | none | none | none |
+| 2026.0.8 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | `rombie-netplay-engine-2026.0.0` | none | none | none | none |
+| 2026.0.7 | `rombie-snes-engine-2026.0.0` | `rombie-link-cable-engine-2026.0.0` | none | none | none | none | none |
+| 2026.0.0 to 2026.0.6 | none (SNES ran snes9x from jsDelivr) | `rombie-link-cable-engine-2026.0.0` (the same files) | none | none | none | none | none |
 
 ## The files and their SHA-256
 
@@ -34,6 +35,13 @@ rebuilt from here. Each release attaches a full-source archive that includes the
 ```
 f2d072805fd51de3fd2115e2d0036df99ae5567805b884ed222ad086690c370a  mednafen_supafaust_libretro.wasm
 df3497e4fbf0fe148cec20abd42821fdc1aeb98da4c278bfb60036b1f4e23032  mednafen_supafaust_libretro.js
+```
+
+`rombie-prosystem-engine-2026.0.0`:
+
+```
+4044e76c054088ff12ee3095ba4405595070464c5b8231ee65dbc36bb3bfb121  prosystem_libretro.js
+0f068a3a69ee000843037e38075c5f37a4680057c405258aa4d622aeec9506c7  prosystem_libretro.wasm
 ```
 
 `rombie-stella-engine-2026.0.0`:
@@ -210,6 +218,21 @@ states), RetroArch without 7-Zip support (`HAVE_7ZIP=0`), and `patches/stella.pa
 
 Stella exposes no save RAM, so a game keeps only its save states.
 
+**Atari 7800 (ProSystem)**
+
+```sh
+git submodule update --init prosystem/RetroArch prosystem/prosystem-libretro
+docker build -t rombie-prosystem prosystem
+docker run --rm -v "${PWD}:/repo" rombie-prosystem sh /repo/prosystem/build.sh
+```
+
+The output lands in `prosystem/out/` with its `SHA256SUMS`, and matches the hashes above byte for byte (a second build,
+from fresh clones of both submodules, gave the same files). The build follows libretro's own recipe in the same
+Emscripten 3.1.46 image as `snes/`, with no patch and RetroArch without 7-Zip support (`HAVE_7ZIP=0`). Nostalgist maps
+the core name `prosystem` to the core's library name, `ProSystem`, the folder RetroArch keeps its save states in.
+ProSystem plays with no BIOS file: it loads `7800 BIOS (U).rom` or `7800 BIOS (E).rom` from the system folder only
+when one is there. It exposes no save RAM, so a game keeps only its save states.
+
 **Link Cable's mGBA**
 
 ```sh
@@ -238,9 +261,11 @@ The output lands in `netplay/out/` with its `SHA256SUMS`, and matches the latest
 Each engine is released on its own, named like Rombie's PS2 engine: tag `rombie-<engine>-engine-<version>`
 (`rombie-snes-engine-2026.0.0` for `snes/`, `rombie-link-cable-engine-2026.0.0` for `mgba-link/`,
 `rombie-netplay-engine-2026.0.0` for `netplay/`, `rombie-clownmdemu-engine-2026.0.0` for `clownmdemu/`,
-`rombie-gearsystem-engine-2026.0.0` for `gearsystem/`, `rombie-stella-engine-2026.0.0` for `stella/`), release name
+`rombie-gearsystem-engine-2026.0.0` for `gearsystem/`, `rombie-stella-engine-2026.0.0` for `stella/`,
+`rombie-prosystem-engine-2026.0.0` for `prosystem/`), release name
 "Rombie SNES Engine 2026.0.0", "Rombie Link Cable Engine 2026.0.0", "Rombie Netplay Engine 2026.0.0", "Rombie ClownMDEmu
-Engine 2026.0.0", "Rombie Gearsystem Engine 2026.0.0" or "Rombie Stella Engine 2026.0.0". Versions are year-based (`YYYY.N.patch`).
+Engine 2026.0.0", "Rombie Gearsystem Engine 2026.0.0", "Rombie Stella Engine 2026.0.0" or "Rombie ProSystem Engine
+2026.0.0". Versions are year-based (`YYYY.N.patch`).
 Each release attaches the full-source archive that `make-source-archive.sh` makes: this repo's files for that
 folder at the tag, plus its submodules at the pinned commits.
 
@@ -255,8 +280,9 @@ byte the shipped one.
 ## Licenses
 
 `LICENSES/` holds the full texts: `GPL-3.0.txt` (RetroArch's `COPYING`), `GPL-2.0.txt` (Supafaust's `COPYING`),
-`MPL-2.0.txt` (mGBA's `LICENSE`), `AGPL-3.0.txt` (ClownMDEmu's `LICENCE.txt`) `emu2413-MIT.txt` (emu2413's `LICENSE`) and `LGPL-2.1.txt` (the text Blip_Buffer and Sms_Snd_Emu's headers refer to, which Gearsystem
-does not carry; it is the SPDX License List's `LGPL-2.1-only` text), each
+`MPL-2.0.txt` (mGBA's `LICENSE`), `AGPL-3.0.txt` (ClownMDEmu's `LICENCE.txt`) `emu2413-MIT.txt` (emu2413's `LICENSE`), `LGPL-2.1.txt` (the text Blip_Buffer and Sms_Snd_Emu's headers refer to, which Gearsystem
+does not carry; it is the SPDX License List's `LGPL-2.1-only` text) and `bupboop-zlib.txt` (ProSystem's
+`bupboop/License.txt`, with LF line endings), each
 copied from the project at the pinned commit where it has one (Gearsystem's own `LICENSE` is the same text as `GPL-3.0.txt`). Every upstream project stays under its own license. The files written for this repo (build scripts,
 Dockerfile, patches, this README) are under the license of what they build: GPL-3.0-or-later in `snes/` and at the
 root, except the Supafaust patch, which stays under Supafaust's GPL-2.0-or-later, MPL-2.0 in `mgba-link/`,
@@ -274,6 +300,12 @@ In `stella/` the files are GPL-3.0-or-later (RetroArch's), beside the GPL-2.0-or
 version 2 of the License, or any later version"; its `License.txt` is the GPL-2.0 text, as `GPL-2.0.txt`). The Stella
 build compiles in, under their own licenses: JSON for Modern C++ 3.11.3 (MIT), Blargg's NTSC filter (LGPL-2.1-or-later),
 RSA Data Security's MD5 code (its own notice, in `MD5.hxx`), David Welch's Thumbulator (public domain) and `libretro.h`
+(MIT).
+In `prosystem/` the files are GPL-3.0-or-later (RetroArch's), beside the GPL-2.0-or-later ProSystem it builds (each
+`core/` file: "either version 2 of the License, or (at your option) any later version"; its `License.txt` is an older
+printing of `GPL-2.0.txt`). The ProSystem build compiles in, under their own licenses: Ron Fries' TIA and POKEY sound
+(version 2 of the GNU Library General Public License, whose section 3 lets them go under the GPL, and so under version 3
+with RetroArch; their legend stays in the source), Osman Celimli's CoreTone (zlib, `bupboop-zlib.txt`) and libretro-common
 (MIT).
 pcsx_rearmed's `COPYING` is GPL-2.0 as well; the BSD-3-Clause and public-domain parts it compiles in are listed in
 `netplay/README.md`.

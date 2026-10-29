@@ -62,3 +62,11 @@
 	path = stella/stella
 	url = https://github.com/stella-emu/stella.git
 	shallow = true
+[submodule "prosystem/RetroArch"]
+	path = prosystem/RetroArch
+	url = https://github.com/libretro/RetroArch.git
+	shallow = true
+[submodule "prosystem/prosystem-libretro"]
+	path = prosystem/prosystem-libretro
+	url = https://github.com/libretro/prosystem-libretro.git
+	shallow = true
