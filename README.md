@@ -38,7 +38,7 @@ f2d072805fd51de3fd2115e2d0036df99ae5567805b884ed222ad086690c370a  mednafen_supaf
 df3497e4fbf0fe148cec20abd42821fdc1aeb98da4c278bfb60036b1f4e23032  mednafen_supafaust_libretro.js
 ```
 
-`rombie-handy-engine-2026.0.0`:
+`rombie-handy-engine-2026.0.1` (the same files as 2026.0.0, whose source archive still held `lynx/lynxdec.cpp`):
 
 ```
 90077fd5f0132a560cb0783ca4721830f14c462b65bb7cda60a82a9574b88cb9  handy_libretro.js
@@ -294,7 +294,8 @@ Each engine is released on its own, named like Rombie's PS2 engine: tag `rombie-
 Engine 2026.0.0", "Rombie Gearsystem Engine 2026.0.0", "Rombie Stella Engine 2026.0.0", "Rombie ProSystem Engine
 2026.0.0" or "Rombie Handy Engine 2026.0.0". Versions are year-based (`YYYY.N.patch`).
 Each release attaches the full-source archive that `make-source-archive.sh` makes: this repo's files for that
-folder at the tag, plus its submodules at the pinned commits.
+folder at the tag, plus its submodules at the pinned commits. The `handy` archive leaves out Handy's
+`lynx/lynxdec.cpp`, which states no license and which the build does not compile.
 
 ```sh
 docker run --rm -v "${PWD}:/repo" -w /repo rombie-snes sh make-source-archive.sh snes rombie-snes-engine-2026.0.0

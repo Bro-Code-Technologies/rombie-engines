@@ -35,5 +35,14 @@ while read -r sha path; do
   add_submodule "$path" "$sha"
 done < "$tmp/submodules"
 
+# Handy's lynx/lynxdec.cpp states no license, so Rombie does not hand it out: handy/build.sh leaves it out of the build,
+# and the archive leaves it out too.
+case "$folder" in
+  handy)
+    rm "$tmp/$name/handy/libretro-handy/lynx/lynxdec.cpp"
+    echo "left out handy/libretro-handy/lynx/lynxdec.cpp (it states no license)"
+    ;;
+esac
+
 tar -C "$tmp" -czf "$tag-source.tar.gz" "$name"
 echo "$tag-source.tar.gz"

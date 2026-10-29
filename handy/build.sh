@@ -53,11 +53,11 @@ copy_tree handy/libretro-handy "$W/libretro-handy"
 
 # lynx/lynxdec.cpp, the loader decryption of Handy's emulated boot ROM, states no license, so the build leaves it out
 # and a cart needs the player's lynxboot.img (README.md, and the patch's own header). The file goes too, so nothing
-# compiled can include it.
+# compiled can include it; a release's source archive already lacks it.
 git -C "$W/libretro-handy" apply "$REPO/handy/patches/handy.patch"
 echo "applied patches/handy.patch"
-rm "$W/libretro-handy/lynx/lynxdec.cpp"
-echo "removed lynx/lynxdec.cpp"
+rm -f "$W/libretro-handy/lynx/lynxdec.cpp"
+echo "left out lynx/lynxdec.cpp"
 
 # RetroArch puts __DATE__ in its version info; fixing the date at RetroArch's commit
 # (2025-11-17 13:22:57 UTC) keeps rebuilds byte for byte the same.
