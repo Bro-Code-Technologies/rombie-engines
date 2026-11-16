@@ -199,14 +199,17 @@ Stella is the commit and patch Rombie's solo 2600 runs (`stella/` in this repo, 
 so a solo game's state loads here. The state is 1,328 bytes: Stella's own, then the patch's block that keeps the
 paddles and the driving controller. `patches/stella.patch` is the same file as `stella/patches/`, and its header lists
 it in full: the code Stella took from z26 left out, the build for the browser, the stick turning a paddle and steering
-the driving controller, the port devices, and a saved state that brings the paddles and the driving controller back.
+the driving controller, the port devices, a saved state that brings the paddles and the driving controller back, and
+the picture read from the new system after a port device starts the game again (before, every frame after a device
+changed on a running engine came from the old system's freed picture).
 It is built as `stella/` builds it (the z26 classes' files deleted from the work copy, `platform=emscripten`, C++20,
 WebAssembly exceptions, which Stella throws and catches loading carts and states), and the frontend is compiled
 against fceumm's `libretro.h`.
 
 Stella applies a port device (Joystick 257, Paddles 1281, Driving 1537) by starting the game again at its next frame,
 so a state loaded before that frame would be thrown away. Rombie therefore runs one frame after `load` with the 2600's
-devices, before it loads any state, and `test.html` does the same; the frontend and the Worker are unchanged. Stella
+devices, before it loads any state, and again when the controller changes on a running engine; `test.html` does the
+same at load, and the frontend and the Worker are unchanged. Stella
 fills RAM and seeds its random numbers from the clock at power-on, so two engines that start on their own differ from
 the first frame. A session's guests start from the host's state, and `test.html` starts engine B from engine A's.
 
@@ -267,7 +270,7 @@ b39f56229acb6c45baa91173e176a2c2316fe53ef8bfd6b86a1b53d8688d5608  gearsystem.was
 d838fec78e3309b2ac92acea7060e11b2d9d4447c625b0c31ee55bf7bf37ffed  clownmdemu.js
 404bb448906c9d9d0947a2047350b8453ec41536ab2d83c49ce9a1d04d1d2c98  clownmdemu.wasm
 06bc91a7fda9dfc6ca31dc548c78e1a02798c6ec951563eca5b152e3aa6128a6  stella.js
-49ee62e7e9d4a6d979ebf9d5c30230bf5072206d6004d154b4e690e40059fffe  stella.wasm
+e5492fd261a96b7dd1b7e8b0483054e5dc0bc935d01fd1a43d97a4be77b52203  stella.wasm
 6a9f395fd7ee4cb28c3ca9c3d26137714a7c62d57a63f2b3e18f92de88169e0c  prosystem.js
 76a2e45157948b07ef767ae02fb9394951baeee01b2b87ccb977ef0987cd8d4b  prosystem.wasm
 ```
@@ -387,7 +390,9 @@ PC (2026-11-16). The test ROM is a 4 KB one written for these checks that draws 
 The whole state differs only where a load leaves it out (see The cores): a load followed by a save gives back the same
 bytes but for those, with each controller, and the final states match. A save takes 12 us and a load 16 us (state
 1,328 bytes). A solo state from `rombie-stella-engine-2026.0.1` (Paddles, with the patch's block) loads with
-`?devices=1281,1281`, draws its first frame and plays on.
+`?devices=1281,1281`, draws its first frame and plays on. A port device changed on a running engine (Paddles or
+Joysticks after 10 or 600 frames, then 120 or 600 frames more) draws the whole picture, as a plain reset does; before
+the patch's part 6 it drew only the test ROM's last 8 columns.
 
 ProSystem, 6,000 frames each (426 rollbacks), the same runs on the same PC (2026-11-16). The test ROM is a 7800 one
 written for these checks that draws the input registers as stripes, two-button mode:

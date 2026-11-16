@@ -1,5 +1,5 @@
 Rombie's change to Stella (Bro Code Technologies, 2026-10-29 and 2026-11-16), under Stella's GPL-2.0-or-later, for
-Stella 7.0c (c4016ea), in five parts.
+Stella 7.0c (c4016ea), in six parts.
 
 1. The core is built without the code Stella says it took from z26, whose license (the GPL "Version 2", with no
    "or any later version") cannot be combined with RetroArch's GPL-3.0. Removed:
@@ -33,6 +33,10 @@ Stella 7.0c (c4016ea), in five parts.
      key repeat and last stick values, the driving controller's counters and last turns, and part 4's stick dial
      positions. They follow Stella's own state, behind a marker, so a state saved before this part still loads, with
      them as a new game's.
+6. The libretro port starts the game again (a new port device from part 4, or a core option that needs it) by
+   destroying the system and creating a new one, but it kept the pointer it had taken into the old system's picture,
+   so every frame after was read from freed memory (a 2600 test ROM drew only its last 8 columns). Destroying the
+   system now forgets that pointer, and the next frame takes the new system's. The saved state is unchanged.
 
 diff --git a/src/common/JoyMap.cxx b/src/common/JoyMap.cxx
 index cab6734..68ae59e 100644
@@ -1665,7 +1669,7 @@ index eb058e8..5d23e90 100644
  	$(CORE_DIR)/emucore/PropsSet.cxx \
  	$(CORE_DIR)/emucore/QuadTari.cxx \
 diff --git a/src/os/libretro/StellaLIBRETRO.cxx b/src/os/libretro/StellaLIBRETRO.cxx
-index e83ab17..09c21bd 100644
+index e83ab17..596703c 100644
 --- a/src/os/libretro/StellaLIBRETRO.cxx
 +++ b/src/os/libretro/StellaLIBRETRO.cxx
 @@ -92,6 +92,10 @@ bool StellaLIBRETRO::create(bool logging)
@@ -1679,6 +1683,16 @@ index e83ab17..09c21bd 100644
    const FSNode rom(rom_path);
  
    if(myOSystem->createConsole(rom) != EmptyString)
+@@ -121,6 +125,9 @@ void StellaLIBRETRO::destroy()
+   video_ready = false;
+   audio_samples = 0;
+ 
++  // The picture lives in the system's surface, which goes with it
++  render_surface = nullptr;
++
+   myOSystem.reset();
+ }
+ 
 diff --git a/src/os/libretro/StellaLIBRETRO.hxx b/src/os/libretro/StellaLIBRETRO.hxx
 index 9ff6283..307e52b 100644
 --- a/src/os/libretro/StellaLIBRETRO.hxx
