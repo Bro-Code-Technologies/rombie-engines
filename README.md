@@ -14,7 +14,7 @@ rebuilt from here. Each release attaches a full-source archive that includes the
 | `netplay/` | Rombie's netplay engine: a libretro frontend of Rombie's own, run in a Web Worker, built with one core per file (NES, SNES, PS1, Master System and the Game Gear's two-console link, Genesis and Sega CD) | `fceumm`: [libretro/libretro-fceumm](https://github.com/libretro/libretro-fceumm) `5cd4a43e16a7f3cd35628d481c347a0a98cfdfa2` · `supafaust`: [libretro/supafaust](https://github.com/libretro/supafaust) `642d1d1b6684aa7e306a02a89885f3f5456a5157` · `pcsx_rearmed`: [libretro/pcsx_rearmed](https://github.com/libretro/pcsx_rearmed) `228c14e10e9a8fae0ead8adf30daad2cdd8655b9` · `gearsystem`: [drhelius/Gearsystem](https://github.com/drhelius/Gearsystem) `517ddaaafbab1af7a312c2b6b6f6043275f58500` (3.9.22) · `emu2413`: [digital-sound-antiques/emu2413](https://github.com/digital-sound-antiques/emu2413) `2e4f6f9752f43cc33572c6636ca31a647600732c` (1.6.2) · `clownmdemu-libretro`: [Clownacy/clownmdemu-libretro](https://github.com/Clownacy/clownmdemu-libretro) `f8395036544d806ebc68fd110a5621c49991a91d` (v1.6.12), with its own submodules | GPL-2.0-or-later (fceumm, Supafaust, pcsx_rearmed and the engine's own files), GPL-3.0-or-later (Gearsystem, combined with the engine's files under version 3) with MIT (emu2413), AGPL-3.0-or-later (ClownMDEmu, combined with them under version 3) | `public/netplay/fceumm.js`, `.wasm`, `supafaust.js`, `.wasm`, `pcsx_rearmed.js`, `.wasm`, `gearsystem.js`, `.wasm`, `clownmdemu.js`, `.wasm` |
 | `clownmdemu/` | RetroArch for Emscripten with ClownMDEmu, Rombie's Sega Genesis and Sega CD emulator, with a patch of Rombie's that puts the pads' and multitap adapters' state into a saved state | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `clownmdemu-libretro`: [Clownacy/clownmdemu-libretro](https://github.com/Clownacy/clownmdemu-libretro) `f8395036544d806ebc68fd110a5621c49991a91d` (v1.6.12), with its own submodules | GPL-3.0-or-later (RetroArch) with AGPL-3.0-or-later (ClownMDEmu) | `public/cores/ClownMDEmu_libretro.js`, `.wasm` |
 | `gearsystem/` | RetroArch for Emscripten with Gearsystem, Rombie's Sega Master System and Game Gear emulator, built without the one file of Gearsystem's that comes from Genesis Plus GX (its YM2413 FM chip), which Rombie's copy replaces with Okazaki's emu2413 | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `Gearsystem`: [drhelius/Gearsystem](https://github.com/drhelius/Gearsystem) `517ddaaafbab1af7a312c2b6b6f6043275f58500` (3.9.22) · `emu2413`: [digital-sound-antiques/emu2413](https://github.com/digital-sound-antiques/emu2413) `2e4f6f9752f43cc33572c6636ca31a647600732c` (1.6.2) | GPL-3.0-or-later (RetroArch, Gearsystem and this repo's replacement files) with MIT (emu2413) | `public/cores/gearsystem_libretro.js`, `.wasm` |
-| `stella/` | RetroArch for Emscripten with Stella, Rombie's Atari 2600 emulator, with a patch of Rombie's that leaves out the code Stella took from z26, lets it build and run in the browser, and brings over two input features of Stella's later libretro port | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `stella`: [stella-emu/stella](https://github.com/stella-emu/stella) `c4016ea4891cb0f90979cb35182214af4c1cb4e7` (7.0c) | GPL-3.0-or-later (RetroArch) with GPL-2.0-or-later (Stella) | `public/cores/stella_libretro.js`, `.wasm` |
+| `stella/` | RetroArch for Emscripten with Stella, Rombie's Atari 2600 emulator, with a patch of Rombie's that leaves out the code Stella took from z26, lets it build and run in the browser, brings over two input features of Stella's later libretro port, and has a saved state bring the paddles and the driving controller back where they were | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `stella`: [stella-emu/stella](https://github.com/stella-emu/stella) `c4016ea4891cb0f90979cb35182214af4c1cb4e7` (7.0c) | GPL-3.0-or-later (RetroArch) with GPL-2.0-or-later (Stella) | `public/cores/stella_libretro.js`, `.wasm` |
 | `prosystem/` | RetroArch for Emscripten with ProSystem, Rombie's Atari 7800 emulator, built without a patch | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `prosystem-libretro`: [libretro/prosystem-libretro](https://github.com/libretro/prosystem-libretro) `8a88014287c7a01cd568067e5a557d0a2b2a051f` (1.3e) | GPL-3.0-or-later (RetroArch) with GPL-2.0-or-later (ProSystem) | `public/cores/prosystem_libretro.js`, `.wasm` |
 | `handy/` | RetroArch for Emscripten with Handy, Rombie's Atari Lynx emulator, with a patch of Rombie's that leaves out the loader decryption of Handy's emulated boot ROM (a file that states no license), so a cart starts only with the player's own `lynxboot.img` | `RetroArch`: [libretro/RetroArch](https://github.com/libretro/RetroArch) `a609b709eb9b5d9a7af89dbf40dd5c673280e636` (1.22.2) · `libretro-handy`: [libretro/libretro-handy](https://github.com/libretro/libretro-handy) `bc55d462f0b2d6b073ea93dc552ebd73cec60fd1` (0.97) | GPL-3.0-or-later (RetroArch) with zlib (Handy) | `public/cores/handy_libretro.js`, `.wasm` |
 
@@ -50,6 +50,13 @@ df3497e4fbf0fe148cec20abd42821fdc1aeb98da4c278bfb60036b1f4e23032  mednafen_supaf
 ```
 4044e76c054088ff12ee3095ba4405595070464c5b8231ee65dbc36bb3bfb121  prosystem_libretro.js
 0f068a3a69ee000843037e38075c5f37a4680057c405258aa4d622aeec9506c7  prosystem_libretro.wasm
+```
+
+`rombie-stella-engine-2026.0.1` (a saved state brings the paddles and the driving controller back):
+
+```
+f8feb1cb30053254f5e36cffd8a8f7e0041d3aaca4d59ed0f278ea1689ec5a84  stella_libretro.js
+1d492dcb803b02de8221cc5e1097392612e5dcb7643bd883d8b00de6a1a36c23  stella_libretro.wasm
 ```
 
 `rombie-stella-engine-2026.0.0`:
@@ -222,7 +229,12 @@ states), RetroArch without 7-Zip support (`HAVE_7ZIP=0`), and `patches/stella.pa
 - from Stella's later libretro port (#1083), adapted to 7.0c: a stick turns a paddle relatively, with the
   `stella_paddle_analog_absolute` and `stella_paddle_analog_deadzone` options; a stick steers the driving controller;
   and the port devices Joystick (257), Paddles (1281) and Driving (1537) put that controller on port 1 or 2 in place of
-  the game database's choice (RetroArch reads a port's device from a remap file, not from `retroarch.cfg`).
+  the game database's choice (RetroArch reads a port's device from a remap file, not from `retroarch.cfg`);
+- a saved state that brings the paddles and the driving controller back where they were (from
+  `rombie-stella-engine-2026.0.1`): `Controller::load` loaded the analog pins into a copy, so a paddle stayed where it
+  was before the load, and the state now also keeps what Stella's own leaves out (the paddles' dial positions and key
+  repeat, the driving controller's counters, the stick's dial positions), after Stella's own data and behind a marker,
+  so a state saved by 2026.0.0 still loads.
 
 Stella exposes no save RAM, so a game keeps only its save states.
 

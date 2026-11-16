@@ -1,5 +1,5 @@
-Rombie's change to Stella (Bro Code Technologies, 2026-10-29), under Stella's GPL-2.0-or-later, for Stella 7.0c
-(c4016ea), in four parts.
+Rombie's change to Stella (Bro Code Technologies, 2026-10-29 and 2026-11-16), under Stella's GPL-2.0-or-later, for
+Stella 7.0c (c4016ea), in five parts.
 
 1. The core is built without the code Stella says it took from z26, whose license (the GPL "Version 2", with no
    "or any later version") cannot be combined with RetroArch's GPL-3.0. Removed:
@@ -26,6 +26,13 @@ Rombie's change to Stella (Bro Code Technologies, 2026-10-29), under Stella's GP
      in the later port) put that controller on the first two ports in place of the game database's choice, through
      Stella's own "lc" and "rc" settings, and a change starts the game again. The joypad device itself is
      "Automatic (from ROM database)".
+5. A saved state brings the paddles and the driving controller back where they were:
+   - Controller::load loaded the analog pins into a copy (getPin() returns one), so a paddle's pin stayed where it was
+     before the load; it now loads them into the pins;
+   - the state keeps what Stella's own leaves out (Controller::save keeps only the pins): the paddles' dial positions,
+     key repeat and last stick values, the driving controller's counters and last turns, and part 4's stick dial
+     positions. They follow Stella's own state, behind a marker, so a state saved before this part still loads, with
+     them as a new game's.
 
 diff --git a/src/common/JoyMap.cxx b/src/common/JoyMap.cxx
 index cab6734..68ae59e 100644
@@ -1102,6 +1109,75 @@ index 510b6a1..f242cc1 100644
  
      // The currently defined display format (NTSC/PAL/SECAM)
      string myDisplayFormat;
+diff --git a/src/emucore/Control.cxx b/src/emucore/Control.cxx
+index 75c789a..e52b0bd 100644
+--- a/src/emucore/Control.cxx
++++ b/src/emucore/Control.cxx
+@@ -89,9 +89,9 @@ bool Controller::load(Serializer& in)
+     setPin(DigitalPin::Four,  in.getBool());
+     setPin(DigitalPin::Six,   in.getBool());
+ 
+-    // Input the analog pins
+-    getPin(AnalogPin::Five).load(in);
+-    getPin(AnalogPin::Nine).load(in);
++    // Input the analog pins (getPin() returns a copy, which loading into left the pins as they were)
++    myAnalogPinValue[static_cast<int>(AnalogPin::Five)].load(in);
++    myAnalogPinValue[static_cast<int>(AnalogPin::Nine)].load(in);
+   }
+   catch(...)
+   {
+diff --git a/src/emucore/Driving.cxx b/src/emucore/Driving.cxx
+index 2464655..b3c5b87 100644
+--- a/src/emucore/Driving.cxx
++++ b/src/emucore/Driving.cxx
+@@ -254,5 +254,27 @@ void Driving::setSensitivity(int sensitivity)
+   SENSITIVITY = sensitivity / 10.0F;
+ }
+ 
++// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
++void Driving::saveState(Int32* out) const
++{
++  const Int32 values[STATE_VALUES] = {
++    myCounter, myCounterHires, myLastCCWEvent, myLastCWEvent, static_cast<Int32>(myGrayIndex), myLastYaxis
++  };
++  std::copy(values, values + STATE_VALUES, out);
++}
++
++// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
++void Driving::loadState(const Int32* in)
++{
++  static const Int32 fresh[STATE_VALUES] = {};
++  if(!in) in = fresh;
++  myCounter = in[0];
++  myCounterHires = in[1];
++  myLastCCWEvent = in[2];
++  myLastCWEvent = in[3];
++  myGrayIndex = static_cast<uInt32>(in[4]) & 0b11;
++  myLastYaxis = in[5];
++}
++
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+ float Driving::SENSITIVITY = 1.0F;
+diff --git a/src/emucore/Driving.hxx b/src/emucore/Driving.hxx
+index 2f4a790..2b117c9 100644
+--- a/src/emucore/Driving.hxx
++++ b/src/emucore/Driving.hxx
+@@ -90,6 +90,15 @@ class Driving : public Controller
+     */
+     static void setSensitivity(int sensitivity);
+ 
++    /**
++      What a saved state leaves out (Controller::save keeps only the pins): the wheel's counters and position, and
++      the last turn events. STATE_VALUES values, for a frontend to keep beside the state; null restores a new
++      controller's.
++    */
++    static constexpr int STATE_VALUES = 6;
++    void saveState(Int32* out) const;
++    void loadState(const Int32* in);
++
+   private:
+     // Counter to iterate through the gray codes
+     Int32 myCounter{0};
 diff --git a/src/emucore/EventHandler.cxx b/src/emucore/EventHandler.cxx
 index 2a95510..20fb453 100644
 --- a/src/emucore/EventHandler.cxx
@@ -1406,6 +1482,62 @@ index 3166847..ec4f238 100644
        }
      }
  
+diff --git a/src/emucore/Paddles.cxx b/src/emucore/Paddles.cxx
+index 4eab698..2e128af 100644
+--- a/src/emucore/Paddles.cxx
++++ b/src/emucore/Paddles.cxx
+@@ -537,6 +537,31 @@ void Paddles::setDigitalPaddleRange(int range)
+   TRIGRANGE = static_cast<int>(TRIGMAX * (range / 100.0));
+ }
+ 
++// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
++void Paddles::saveState(Int32* out) const
++{
++  const Int32 values[STATE_VALUES] = {
++    myCharge[0], myCharge[1], myLastCharge[0], myLastCharge[1], myKeyRepeatA, myKeyRepeatB,
++    myPaddleRepeatA, myPaddleRepeatB, myLastAxisX, myLastAxisY
++  };
++  std::copy(values, values + STATE_VALUES, out);
++}
++
++// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
++void Paddles::loadState(const Int32* in)
++{
++  const Int32 fresh[STATE_VALUES] = { TRIGRANGE / 2, TRIGRANGE / 2 };
++  if(!in) in = fresh;
++  myCharge = { in[0], in[1] };
++  myLastCharge = { in[2], in[3] };
++  myKeyRepeatA = in[4] != 0;
++  myKeyRepeatB = in[5] != 0;
++  myPaddleRepeatA = in[6];
++  myPaddleRepeatB = in[7];
++  myLastAxisX = in[8];
++  myLastAxisY = in[9];
++}
++
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+ int Paddles::XCENTER = 0;
+ int Paddles::YCENTER = 0;
+diff --git a/src/emucore/Paddles.hxx b/src/emucore/Paddles.hxx
+index 504ac74..774bd8c 100644
+--- a/src/emucore/Paddles.hxx
++++ b/src/emucore/Paddles.hxx
+@@ -164,6 +164,15 @@ class Paddles : public Controller
+     */
+     static void setDigitalPaddleRange(int range);
+ 
++    /**
++      What a saved state leaves out (Controller::save keeps only the pins): the dial positions the keys move and their
++      repeat, and the last stick values. STATE_VALUES values, for a frontend to keep beside the state; null restores a
++      new controller's.
++    */
++    static constexpr int STATE_VALUES = 10;
++    void saveState(Int32* out) const;
++    void loadState(const Int32* in);
++
+     // The maximum value of the paddle pot = 1MOhm
+     static constexpr uInt32 MAX_RESISTANCE = 1000000;
+ 
 diff --git a/src/emucore/PlusROM.cxx b/src/emucore/PlusROM.cxx
 index 6c2bf62..018dcae 100644
 --- a/src/emucore/PlusROM.cxx
@@ -1548,10 +1680,18 @@ index e83ab17..09c21bd 100644
  
    if(myOSystem->createConsole(rom) != EmptyString)
 diff --git a/src/os/libretro/StellaLIBRETRO.hxx b/src/os/libretro/StellaLIBRETRO.hxx
-index 9ff6283..bc09f73 100644
+index 9ff6283..307e52b 100644
 --- a/src/os/libretro/StellaLIBRETRO.hxx
 +++ b/src/os/libretro/StellaLIBRETRO.hxx
-@@ -55,6 +55,17 @@ class StellaLIBRETRO
+@@ -25,6 +25,7 @@
+ #include "Console.hxx"
+ #include "ConsoleTiming.hxx"
+ #include "Control.hxx"
++#include "Driving.hxx"
+ #include "EmulationTiming.hxx"
+ #include "EventHandler.hxx"
+ #include "M6532.hxx"
+@@ -55,6 +56,17 @@ class StellaLIBRETRO
      bool loadState(const void* data, size_t size);
      bool saveState(void* data, size_t size) const;
  
@@ -1569,7 +1709,50 @@ index 9ff6283..bc09f73 100644
    public:
      const char* getCoreName() const { return "Stella"; }
      const char* getROMExtensions() const { return "a26|bin"; }
-@@ -191,6 +202,7 @@ class StellaLIBRETRO
+@@ -140,6 +152,42 @@ class StellaLIBRETRO
+       return myOSystem->console().rightController().type();
+     }
+ 
++    // The two ports' controllers' own state, which a saved state leaves out (Paddles' and Driving's),
++    // CONTROLLER_VALUES values a port; null restores a new controller's
++    static constexpr int CONTROLLER_VALUES = Paddles::STATE_VALUES;
++    static_assert(Driving::STATE_VALUES <= CONTROLLER_VALUES);
++    void saveControllers(Int32* out) const
++    {
++      for(int port = 0; port < 2; ++port, out += CONTROLLER_VALUES)
++      {
++        const Controller& controller = port ? myOSystem->console().rightController()
++                                            : myOSystem->console().leftController();
++        std::fill(out, out + CONTROLLER_VALUES, 0);
++        if(isPaddles(controller.type()))
++          static_cast<const Paddles&>(controller).saveState(out);
++        else if(controller.type() == Controller::Type::Driving)
++          static_cast<const Driving&>(controller).saveState(out);
++      }
++    }
++    void loadControllers(const Int32* in)
++    {
++      for(int port = 0; port < 2; ++port)
++      {
++        Controller& controller = port ? myOSystem->console().rightController()
++                                      : myOSystem->console().leftController();
++        const Int32* values = in ? in + port * CONTROLLER_VALUES : nullptr;
++        if(isPaddles(controller.type()))
++          static_cast<Paddles&>(controller).loadState(values);
++        else if(controller.type() == Controller::Type::Driving)
++          static_cast<Driving&>(controller).loadState(values);
++      }
++    }
++    static bool isPaddles(Controller::Type type)
++    {
++      return type == Controller::Type::Paddles || type == Controller::Type::PaddlesIAxis ||
++             type == Controller::Type::PaddlesIAxDr;
++    }
++
+     void setPaddleJoypadSensitivity(int sensitivity)
+     {
+       if(getLeftControllerType() == Controller::Type::Paddles ||
+@@ -191,6 +239,7 @@ class StellaLIBRETRO
  
    private:
      string video_palette{PaletteHandler::SETTING_STANDARD};
@@ -1578,7 +1761,7 @@ index 9ff6283..bc09f73 100644
      uInt32 video_phosphor_blend{60};
  
 diff --git a/src/os/libretro/libretro.cxx b/src/os/libretro/libretro.cxx
-index 13e5fc0..9dbac38 100644
+index 13e5fc0..e86a07c 100644
 --- a/src/os/libretro/libretro.cxx
 +++ b/src/os/libretro/libretro.cxx
 @@ -37,6 +37,8 @@ static int setting_stereo;
@@ -1788,3 +1971,65 @@ index 13e5fc0..9dbac38 100644
      { NULL, 0 }
    };
  
+@@ -701,6 +764,14 @@ void retro_deinit()
+   stella.destroy();
+ }
+ 
++// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
++// A saved state ends with what Stella's own leaves out: a marker, the stick's dial positions and the controllers'
++// own state (StellaLIBRETRO::saveControllers). A state without it (saved before) loads as it did, with those as a
++// new game's.
++static constexpr uInt32 EXTRA_MARKER = 0x31424D52;  // "RMB1"
++static constexpr size_t EXTRA_VALUES = 1 + 4 + 2 * StellaLIBRETRO::CONTROLLER_VALUES;
++static constexpr size_t EXTRA_SIZE = EXTRA_VALUES * sizeof(Int32);
++
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+ size_t retro_serialize_size()
+ {
+@@ -712,19 +783,43 @@ size_t retro_serialize_size()
+       return 0x100000;
+   }
+ 
+-  return stella.getStateSize();
++  return stella.getStateSize() + EXTRA_SIZE;
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+ bool retro_serialize(void *data, size_t size)
+ {
+-  return stella.saveState(data, size);
++  if(size < EXTRA_SIZE)
++    return false;
++  memset(data, 0, size);
++  if(!stella.saveState(data, size - EXTRA_SIZE))
++    return false;
++
++  Int32 extra[EXTRA_VALUES];
++  extra[0] = static_cast<Int32>(EXTRA_MARKER);
++  std::copy(paddle_position, paddle_position + 4, extra + 1);
++  stella.saveControllers(extra + 5);
++  memcpy(static_cast<uInt8*>(data) + size - EXTRA_SIZE, extra, EXTRA_SIZE);
++  return true;
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+ bool retro_unserialize(const void *data, size_t size)
+ {
+-  return stella.loadState(data, size);
++  if(!stella.loadState(data, size))
++    return false;
++
++  Int32 extra[EXTRA_VALUES];
++  bool kept = false;
++  if(size >= EXTRA_SIZE)
++  {
++    memcpy(extra, static_cast<const uInt8*>(data) + size - EXTRA_SIZE, EXTRA_SIZE);
++    kept = static_cast<uInt32>(extra[0]) == EXTRA_MARKER;
++  }
++  for(int i = 0; i < 4; ++i)
++    paddle_position[i] = kept ? extra[1 + i] : 0;
++  stella.loadControllers(kept ? extra + 5 : nullptr);
++  return true;
+ }
+ 
+ // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
