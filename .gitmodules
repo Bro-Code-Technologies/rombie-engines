@@ -78,3 +78,7 @@
 	path = handy/libretro-handy
 	url = https://github.com/libretro/libretro-handy.git
 	shallow = true
+[submodule "netplay/stella"]
+	path = netplay/stella
+	url = https://github.com/stella-emu/stella.git
+	shallow = true

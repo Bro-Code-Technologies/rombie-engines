@@ -40,6 +40,12 @@
   gearsystem_link_enable, gearsystem_link_screen, gearsystem_link_audio). Its scripted inputs press Start, Down
   and button 1 on both pads to reach a game's link mode (Super Space Invaders' LINK GAME), then play.
   ?options=key=value;key=value gives both engines those core options instead, and ?optionsB= adds to B's.
+  ?engine=out/stella.js runs a 2600 game. ?devices=1281,1281 sets those port devices at `load` (Stella's Joystick
+  257, Paddles 1281, Driving 1537); Stella starts the game again with a changed device at its next frame, so the
+  engine runs that frame and starts from the state after it, as Rombie does. ?stick=1 also moves each scripted
+  player's left stick (a paddle's or wheel's analog input), and ?ports=4 scripts all four players (four paddles).
+  Stella fills RAM and seeds its random numbers from the clock at power-on, so for it engine B starts from engine A's
+  state, as a session's guest starts from the host's.
 -->
 <h1>Netplay engine check</h1>
 <fieldset>
@@ -81,6 +87,10 @@ const OPTIONS_B = {
   ...(PARAMS.has('options') || !GEARSYSTEM ? OPTIONS_A : { ...OPTIONS_A, gearsystem_link_screen: 'Screen 2', gearsystem_link_audio: 'Screen 2' }),
   ...parseOptions(PARAMS.get('optionsB')),
 }
+const STELLA = /stella/.test(ENGINE_URL)
+const DEVICES = PARAMS.has('devices') ? PARAMS.get('devices').split(',').map(Number) : null
+const STICK = PARAMS.has('stick')
+const SCRIPTED_PORTS = Number(PARAMS.get('ports') || 2)
 const PORTS = 4
 const VALUES_PER_FRAME = PORTS * 5
 const FRAME_MS = 1000 / 60
@@ -143,7 +153,15 @@ async function startEngine(rom, options = OPTIONS_A) {
   const engine = new Engine()
   const system = rom.system.map((file) => ({ name: file.name, data: file.data.slice(0) }))
   const game = rom.files ? { files: rom.files } : { rom: rom.bytes.slice(0) }
-  const info = await engine.request({ type: 'load', name: rom.name, system, options, ...game })
+  const info = await engine.request({ type: 'load', name: rom.name, system, options, ...game, ...(DEVICES ? { devices: DEVICES } : {}) })
+  if (DEVICES) {
+    // Stella starts the game again with the devices at its next frame: run it, and start from the state after it.
+    const idle = new Int16Array(VALUES_PER_FRAME)
+    await engine.request({ type: 'run', from: info.frame, inputs: idle.buffer, video: false }, [idle.buffer])
+    const { data } = await engine.request({ type: 'save' })
+    await engine.request({ type: 'loadState', data, frame: 0 }, [data])
+    info.frame = 0
+  }
   return { engine, info }
 }
 
@@ -171,14 +189,16 @@ function scriptedInputs(frames, seed) {
   }
   const pool = [[JOYPAD.RIGHT, 0.5], [JOYPAD.LEFT, 0.12], [JOYPAD.UP, 0.12], [JOYPAD.DOWN, 0.12], [JOYPAD.A, 0.4], [JOYPAD.B, 0.4]]
   const values = new Int16Array(frames * VALUES_PER_FRAME)
-  for (let port = 0; port < 2; port++) {
+  for (let port = 0; port < SCRIPTED_PORTS; port++) {
     let held = 0
+    let stick = 0
     let left = 0
     for (let f = 0; f < frames; f++) {
       if (left-- <= 0) {
         held = 0
         for (const [bit, odds] of pool) if (random() < odds) held |= 1 << bit
         if (random() < 0.01) held |= 1 << JOYPAD.SELECT
+        stick = STICK && random() < 0.5 ? Math.round((random() * 2 - 1) * 32767) : 0
         left = 4 + Math.floor(random() * 16)
       }
       let buttons = held
@@ -191,6 +211,7 @@ function scriptedInputs(frames, seed) {
         }
       }
       values[f * VALUES_PER_FRAME + port * 5] = buttons
+      values[f * VALUES_PER_FRAME + port * 5 + 1] = stick
     }
   }
   return values
@@ -239,6 +260,10 @@ async function runDeterminism(rom) {
     for (let f = frames >> 1; f < frames; f++) truthB[f * VALUES_PER_FRAME] = other[f * VALUES_PER_FRAME]
   }
   const [a, b] = await Promise.all([startEngine(rom, OPTIONS_A), startEngine(rom, OPTIONS_B)])
+  if (STELLA) {
+    const { data } = await a.engine.request({ type: 'save' })
+    await b.engine.request({ type: 'loadState', data, frame: 0 }, [data])
+  }
   log(`determinism: ${frames} frames (${(frames / 60 / 60).toFixed(1)} min of play), ${realtime ? 'real time' : 'as fast as the engines go'}; ${a.info.library}, state ${a.info.stateSize} bytes`)
 
   const hashA = new Uint32Array(frames)

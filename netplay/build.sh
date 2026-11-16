@@ -5,7 +5,7 @@
 #   docker run --rm -v "${PWD}:/repo" rombie-netplay sh /repo/netplay/build.sh
 # Output: netplay/out/fceumm.js and .wasm (NES), supafaust.js and .wasm (SNES), pcsx_rearmed.js and
 # .wasm (PS1), gearsystem.js and .wasm (Master System and Game Gear), clownmdemu.js and .wasm (Genesis and
-# Sega CD), and SHA256SUMS.
+# Sega CD), stella.js and .wasm (Atari 2600), and SHA256SUMS.
 set -eu
 REPO=/repo
 W=/work
@@ -207,9 +207,37 @@ emcc -O3 \
   --post-js "$W/engine/netplay-worker.js" \
   -o "$W/out/clownmdemu.js"
 
+# Stella (Atari 2600), the commit and patch Rombie's solo build runs (stella/), so a solo game's state loads here.
+# The patch (the same file as stella/patches/) leaves out the code Stella took from z26, and its files go too, as in
+# stella/build.sh.
+copy_source netplay/stella stella
+git -C "$W/stella" apply "$REPO/netplay/patches/stella.patch"
+echo "applied patches/stella.patch"
+(cd "$W/stella/src/emucore" && rm CartCM.cxx CartCM.hxx CompuMate.cxx CompuMate.hxx KidVid.cxx KidVid.hxx \
+  MindLink.cxx MindLink.hxx PointingDevice.cxx PointingDevice.hxx AmigaMouse.hxx AtariMouse.hxx TrakBall.hxx)
+echo "removed the z26-derived files"
+# The Stella commit's date (2025-01-02 21:14:35 UTC).
+export SOURCE_DATE_EPOCH=1735852475
+# Stella throws and catches C++ exceptions (loading carts and states), so the core, the frontend and the link use
+# WebAssembly's native exceptions, as Supafaust's do. The makefile finds no git commit in the work copy, so the
+# version stays "7.0c".
+export EMCC_CFLAGS=-fwasm-exceptions
+(cd "$W/stella/src/os/libretro" && emmake make -j"$N" platform=emscripten)
+emcc -O3 -I "$LRC/include" -c "$W/engine/netplay-main.c" -o "$W/engine/netplay-main-stella.o"
+em++ -O3 \
+  "$W/engine/netplay-main-stella.o" "$W/stella/src/os/libretro/stella_libretro_emscripten.bc" \
+  -sENVIRONMENT=worker \
+  -sALLOW_MEMORY_GROWTH=1 \
+  -sINITIAL_MEMORY=33554432 \
+  -sEXPORTED_FUNCTIONS=_malloc,_free \
+  -sEXPORTED_RUNTIME_METHODS=FS,UTF8ToString,stringToNewUTF8,HEAPU8,HEAP16 \
+  --post-js "$W/engine/netplay-worker.js" \
+  -o "$W/out/stella.js"
+unset EMCC_CFLAGS
+
 mkdir -p "$OUT"
 cp "$W/out/fceumm.js" "$W/out/fceumm.wasm" "$W/out/supafaust.js" "$W/out/supafaust.wasm" \
   "$W/out/pcsx_rearmed.js" "$W/out/pcsx_rearmed.wasm" "$W/out/gearsystem.js" "$W/out/gearsystem.wasm" \
-  "$W/out/clownmdemu.js" "$W/out/clownmdemu.wasm" "$OUT/"
+  "$W/out/clownmdemu.js" "$W/out/clownmdemu.wasm" "$W/out/stella.js" "$W/out/stella.wasm" "$OUT/"
 (cd "$OUT" && sha256sum fceumm.js fceumm.wasm supafaust.js supafaust.wasm pcsx_rearmed.js pcsx_rearmed.wasm \
-  gearsystem.js gearsystem.wasm clownmdemu.js clownmdemu.wasm | tee SHA256SUMS)
+  gearsystem.js gearsystem.wasm clownmdemu.js clownmdemu.wasm stella.js stella.wasm | tee SHA256SUMS)
