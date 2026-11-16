@@ -94,6 +94,25 @@ a8f0a858a30e2b7fd13d439b922f1f0eeff412b32249321134ba201d4146f6ba  ClownMDEmu_lib
 0247b5c54c732eb1577a0f365e3721b2c6d7c21fd7b187fbba0d438e83352cbe  mgba-link.js
 ```
 
+`rombie-netplay-engine-2026.0.3` (Stella for the 2600 and ProSystem for the 7800 added; the other ten files are 2026.0.2's):
+
+```
+545e20e338ed01412fb8e3b703cc1de81b866d32a97157e272dbfc7dec61ba71  fceumm.js
+bc2504d91319f3057bd3886f5212f40f6becb82d8d7e772b9b11f09dee5b102a  fceumm.wasm
+a971620743731fd1ff651757e05c7af8c2cac5530e47f0dc6b9b2e95f42d3a19  supafaust.js
+60a4fa88228e8cf05619a74739acd98b8e11d31b5a1d1513a63e74317930f78e  supafaust.wasm
+ea8c7f349ea04a97171bb2990406b04105424a8b053f94f35a07064c6e40cd79  pcsx_rearmed.js
+cda5d2e20ff15aea4ac6b60069306af4c230a30dff5b165ebacb7cdb5bfc63f4  pcsx_rearmed.wasm
+cc1ffcfc79531957a3a3daaa338dee677efaff02eaa538ad0c4330615bd80b7d  gearsystem.js
+b39f56229acb6c45baa91173e176a2c2316fe53ef8bfd6b86a1b53d8688d5608  gearsystem.wasm
+d838fec78e3309b2ac92acea7060e11b2d9d4447c625b0c31ee55bf7bf37ffed  clownmdemu.js
+404bb448906c9d9d0947a2047350b8453ec41536ab2d83c49ce9a1d04d1d2c98  clownmdemu.wasm
+06bc91a7fda9dfc6ca31dc548c78e1a02798c6ec951563eca5b152e3aa6128a6  stella.js
+e5492fd261a96b7dd1b7e8b0483054e5dc0bc935d01fd1a43d97a4be77b52203  stella.wasm
+6a9f395fd7ee4cb28c3ca9c3d26137714a7c62d57a63f2b3e18f92de88169e0c  prosystem.js
+76a2e45157948b07ef767ae02fb9394951baeee01b2b87ccb977ef0987cd8d4b  prosystem.wasm
+```
+
 `rombie-netplay-engine-2026.0.2`:
 
 ```

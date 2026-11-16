@@ -275,8 +275,8 @@ e5492fd261a96b7dd1b7e8b0483054e5dc0bc935d01fd1a43d97a4be77b52203  stella.wasm
 76a2e45157948b07ef767ae02fb9394951baeee01b2b87ccb977ef0987cd8d4b  prosystem.wasm
 ```
 
-The first ten are `rombie-netplay-engine-2026.0.2`'s files, unchanged; Stella's and ProSystem's four are new. Two
-builds from the same checkout gave the same fourteen files.
+This is `rombie-netplay-engine-2026.0.3`: the first ten are 2026.0.2's files, unchanged, and Stella's and ProSystem's
+four are new. Two builds from the same checkout gave the same fourteen files.
 
 In `rombie-netplay-engine-2026.0.2` every file changed from 2026.0.1: the frontend's save RAM calls take a memory id, it limits
 a core's log messages, the Worker script has the save folder messages, and both are built into each core's files.
