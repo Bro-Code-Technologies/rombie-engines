@@ -82,3 +82,7 @@
 	path = netplay/stella
 	url = https://github.com/stella-emu/stella.git
 	shallow = true
+[submodule "netplay/prosystem-libretro"]
+	path = netplay/prosystem-libretro
+	url = https://github.com/libretro/prosystem-libretro.git
+	shallow = true

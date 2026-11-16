@@ -1,3 +1,5 @@
 # The build scripts and patches run in Linux containers, so they stay LF on every checkout,
 # Windows included.
 * text=auto eol=lf
+# Except the ProSystem patch, whose lines for ProSystem's CRLF files carry their CRs, byte for byte.
+netplay/patches/prosystem.patch -text

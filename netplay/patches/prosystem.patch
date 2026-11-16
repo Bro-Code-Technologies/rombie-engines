@@ -1,0 +1,182 @@
+Rombie's change to ProSystem (Bro Code Technologies, 2026-11-16), under ProSystem's GPL-2.0-or-later, for
+libretro/prosystem-libretro 8a88014 (1.3e), built only into Rombie's netplay engine.
+
+A loaded state runs on exactly as the saved one would. ProSystem's state (the full one, 49,221 bytes, which is what a
+frontend gets unless it asks for runahead's fast states) holds the CPU's registers, the cartridge's bank and the
+first 16 KB of memory, but not two things the game goes on to depend on:
+- the CPU's place in its scanline (prosystem_cycles), which carries into the next frame, so after a load the frame
+  ended at a different instruction;
+- the RIOT's timer and port directions (riot_timing, riot_timer, riot_intervals, riot_dra, riot_drb, riot_elapsed,
+  riot_currentTime, riot_clocks), which games read through INTIM and INTFLG.
+prosystem_SaveExtra and prosystem_LoadExtra keep them, ten values in ProSystem's own 8-byte form (80 bytes), behind
+the marker "RMB1" at the end of the state buffer, where ProSystem writes nothing; retro_serialize zero-fills the
+buffer first, so the bytes left unused are the same in every engine. The state's size and everything before its
+end are unchanged: an unpatched ProSystem (Rombie's solo 7800) loads a patched state and ignores the end, and a
+state without the marker leaves the values as they are. A Souper cartridge's state fills the whole buffer, so it
+has no room for them and runs as before.
+
+The core's files are kept with the CRLF line endings they have upstream (libretro.c has LF), so this file is too.
+
+diff --git a/core/ProSystem.c b/core/ProSystem.c
+index 2f6da1e..8f4aa9f 100644
+--- a/core/ProSystem.c
++++ b/core/ProSystem.c
+@@ -39,6 +39,8 @@
+ #define PRO_SYSTEM_STATE_HEADER "PRO-SYSTEM STATE"
+ 
+ static uint32_t prosystem_cycles = 0;
++/* Rombie: how much of the buffer the last prosystem_Save or prosystem_Load used. */
++static uint32_t prosystem_stateUsed = 0;
+ uint16_t prosystem_frequency     = 60;
+ uint16_t prosystem_scanlines     = 262;
+ 
+@@ -253,6 +255,7 @@ bool prosystem_Save(char *buffer, bool fast_saves)
+       buffer[size++] = bupchip_current_song;
+    }
+ 
++   prosystem_stateUsed = size;
+    return true;
+ }
+ 
+@@ -383,9 +386,39 @@ bool prosystem_Load(const char *buffer, bool fast_saves)
+       bupchip_StateLoaded();
+    }
+ 
++   prosystem_stateUsed = offset;
+    return true;
+ }
+ 
++/* Rombie: what the state above leaves out but the game goes on to depend on, so a loaded state runs on exactly
++ * as the saved one would: the CPU's place in its scanline, which carries into the next frame, and the RIOT's
++ * timer, which games read through INTIM and INTFLG. It is kept at the end of the state buffer, where the state
++ * above writes nothing, behind a marker. A Souper cartridge's state fills the buffer, so it has no room for it. */
++#define PROSYSTEM_EXTRA_MARKER 0x524D4231 /* "RMB1" */
++#define PROSYSTEM_EXTRA_SIZE   (10 * 8)
++
++void prosystem_SaveExtra(char *buffer, uint32_t total)
++{
++   uint32_t size = total - PROSYSTEM_EXTRA_SIZE;
++   if(prosystem_stateUsed + PROSYSTEM_EXTRA_SIZE > total)
++      return;
++   save_uint32_to_buffer(buffer, &size, PROSYSTEM_EXTRA_MARKER);
++   save_uint32_to_buffer(buffer, &size, prosystem_cycles);
++   riot_SaveState(buffer, &size);
++}
++
++/* A state without the marker (from a build without this) leaves them as they are. */
++void prosystem_LoadExtra(const char *buffer, uint32_t total)
++{
++   uint32_t offset = total - PROSYSTEM_EXTRA_SIZE;
++   if(prosystem_stateUsed + PROSYSTEM_EXTRA_SIZE > total)
++      return;
++   if(read_uint32_from_buffer(buffer, &offset) != PROSYSTEM_EXTRA_MARKER)
++      return;
++   prosystem_cycles = read_uint32_from_buffer(buffer, &offset);
++   riot_LoadState(buffer, &offset);
++}
++
+ void prosystem_Close(bool persistent_data)
+ {
+    bupchip_Release();
+diff --git a/core/ProSystem.h b/core/ProSystem.h
+index 2bcf150..5193c8c 100644
+--- a/core/ProSystem.h
++++ b/core/ProSystem.h
+@@ -38,6 +38,8 @@ extern void prosystem_Reset(void);
+ extern void prosystem_ExecuteFrame(const uint8_t* input);
+ extern bool prosystem_Save(char *buffer, bool fast_saves);
+ extern bool prosystem_Load(const char *buffer, bool fast_saves);
++extern void prosystem_SaveExtra(char *buffer, uint32_t total);
++extern void prosystem_LoadExtra(const char *buffer, uint32_t total);
+ extern void prosystem_Close(bool persistent_data);
+ uint32_t read_uint32_from_buffer(const char* buffer, uint32_t* offset);
+ void save_uint32_to_buffer(char* buffer, uint32_t* size, uint32_t data);
+diff --git a/core/Riot.c b/core/Riot.c
+index 028b312..b8696c6 100644
+--- a/core/Riot.c
++++ b/core/Riot.c
+@@ -26,6 +26,7 @@
+ #include "Riot.h"
+ #include "Equates.h"
+ #include "Memory.h"
++#include "ProSystem.h"
+ 
+ bool riot_timing              = false;
+ static uint16_t riot_timer    = TIM64T;
+@@ -222,6 +223,32 @@ void riot_SetTimer(uint16_t timer, uint8_t intervals)
+    }
+ }
+ 
++/* Rombie: the timer and the port directions, which a ProSystem state leaves out (ProSystem.c,
++ * prosystem_SaveExtra), eight values. */
++void riot_SaveState(char *buffer, uint32_t *size)
++{
++   save_uint32_to_buffer(buffer, size, riot_timing);
++   save_uint32_to_buffer(buffer, size, riot_timer);
++   save_uint32_to_buffer(buffer, size, riot_intervals);
++   save_uint32_to_buffer(buffer, size, riot_dra);
++   save_uint32_to_buffer(buffer, size, riot_drb);
++   save_uint32_to_buffer(buffer, size, riot_elapsed);
++   save_uint32_to_buffer(buffer, size, (uint32_t)riot_currentTime);
++   save_uint32_to_buffer(buffer, size, riot_clocks);
++}
++
++void riot_LoadState(const char *buffer, uint32_t *offset)
++{
++   riot_timing      = read_uint32_from_buffer(buffer, offset) != 0;
++   riot_timer       = (uint16_t)read_uint32_from_buffer(buffer, offset);
++   riot_intervals   = (uint8_t)read_uint32_from_buffer(buffer, offset);
++   riot_dra         = (uint8_t)read_uint32_from_buffer(buffer, offset);
++   riot_drb         = (uint8_t)read_uint32_from_buffer(buffer, offset);
++   riot_elapsed     = read_uint32_from_buffer(buffer, offset) != 0;
++   riot_currentTime = (int)read_uint32_from_buffer(buffer, offset);
++   riot_clocks      = (uint16_t)read_uint32_from_buffer(buffer, offset);
++}
++
+ void riot_UpdateTimer(uint8_t cycles)
+ {
+    riot_currentTime -= cycles;
+diff --git a/core/Riot.h b/core/Riot.h
+index b6f6a89..741f7a8 100644
+--- a/core/Riot.h
++++ b/core/Riot.h
+@@ -39,6 +39,8 @@ extern void riot_SetDRA(uint8_t data);
+ extern void riot_SetDRB(uint8_t data);
+ extern void riot_SetTimer(uint16_t timer, uint8_t intervals);
+ extern void riot_UpdateTimer(uint8_t cycles);
++extern void riot_SaveState(char *buffer, uint32_t *size);
++extern void riot_LoadState(const char *buffer, uint32_t *offset);
+ 
+ extern bool riot_timing;
+ 
+diff --git a/core/libretro.c b/core/libretro.c
+index c6fd112..1f67341 100644
+--- a/core/libretro.c
++++ b/core/libretro.c
+@@ -446,7 +446,13 @@ bool retro_serialize(void *data, size_t size)
+    if ((fast_savestates && size != FAST_SAVE_STATE_SIZE) || (!fast_savestates && size != SAVE_STATE_SIZE))
+       return false;
+ 
+-   return prosystem_Save((char*)data, fast_savestates);
++   /* Rombie: zero-filled, so the bytes the state leaves unused are the same in every engine, and what the state
++    * leaves out goes at its end (ProSystem.c, prosystem_SaveExtra). */
++   memset(data, 0, size);
++   if (!prosystem_Save((char*)data, fast_savestates))
++      return false;
++   prosystem_SaveExtra((char*)data, size);
++   return true;
+ }
+ 
+ bool retro_unserialize(const void *data, size_t size)
+@@ -455,7 +461,10 @@ bool retro_unserialize(const void *data, size_t size)
+    if ((fast_savestates && size != FAST_SAVE_STATE_SIZE) || (!fast_savestates && size != SAVE_STATE_SIZE))
+       return false;
+ 
+-   return prosystem_Load((const char*)data, fast_savestates);
++   if (!prosystem_Load((const char*)data, fast_savestates))
++      return false;
++   prosystem_LoadExtra((const char*)data, size);
++   return true;
+ }
+ 
+ void retro_cheat_reset(void)

@@ -33,6 +33,8 @@ Single-threaded, so no `SharedArrayBuffer` and no cross-origin isolation.
 | `patches/pcsx_rearmed.patch` | pcsx_rearmed's changes so a loaded state runs on exactly as the saved one would (see The cores) |
 | `stella/` | The Atari 2600 core, a submodule pinned to its commit |
 | `patches/stella.patch` | Stella's changes, the same file as `stella/patches/` (see The cores) |
+| `prosystem-libretro/` | The Atari 7800 core, a submodule pinned to its commit |
+| `patches/prosystem.patch` | ProSystem's changes so a loaded state runs on exactly as the saved one would (see The cores), kept with CRLF where ProSystem's files have it |
 
 ### Messages
 
@@ -96,7 +98,9 @@ little, while its whole state comes back exactly after a rollback (no mismatches
 below). Rombie compares the whole state for SNES. Gearsystem's does too, with the link on: both consoles are in the
 state, which comes back exactly after a rollback (see Testing), while `memoryHashes` covers the first console only.
 Stella exposes only the RIOT's 128 bytes of RAM, and its whole state differs for a frame or two after each rollback
-in parts the game never sees (see The cores), so Rombie compares game memory and pictures for the 2600.
+in parts the game never sees (see The cores), so Rombie compares game memory and pictures for the 2600. ProSystem's
+whole state comes back exactly after a rollback with Rombie's patch, while its picture can keep a frame the rollback
+undid (see The cores), so Rombie compares the whole state for the 7800 and not the picture.
 
 ## The cores
 
@@ -108,6 +112,7 @@ in parts the game never sees (see The cores), so Rombie compares game memory and
 | Gearsystem (Master System and Game Gear) | `gearsystem`: [drhelius/Gearsystem](https://github.com/drhelius/Gearsystem) `517ddaaafbab1af7a312c2b6b6f6043275f58500` (3.9.22) · `emu2413`: [digital-sound-antiques/emu2413](https://github.com/digital-sound-antiques/emu2413) `2e4f6f9752f43cc33572c6636ca31a647600732c` (1.6.2) | GPL-3.0-or-later (Gearsystem and the files in `overlay/`) with MIT (emu2413) | `gearsystem.js`, `.wasm` |
 | ClownMDEmu (Genesis and Sega CD) | `clownmdemu-libretro`: [Clownacy/clownmdemu-libretro](https://github.com/Clownacy/clownmdemu-libretro) `f8395036544d806ebc68fd110a5621c49991a91d` (v1.6.12), with its own submodules, and `patches/clownmdemu.patch` | AGPL-3.0-or-later (ClownMDEmu, clown68000, clownz80 and the patch) with 0BSD, BSD-3-Clause and MIT libraries | `clownmdemu.js`, `.wasm` |
 | Stella (Atari 2600) | `stella`: [stella-emu/stella](https://github.com/stella-emu/stella) `c4016ea4891cb0f90979cb35182214af4c1cb4e7` (7.0c), and `patches/stella.patch` | GPL-2.0-or-later (Stella and the patch) with MIT, LGPL-2.1-or-later and public-domain libraries | `stella.js`, `.wasm` |
+| ProSystem (Atari 7800) | `prosystem-libretro`: [libretro/prosystem-libretro](https://github.com/libretro/prosystem-libretro) `8a88014287c7a01cd568067e5a557d0a2b2a051f` (1.3e), and `patches/prosystem.patch` | GPL-2.0-or-later (ProSystem and the patch) with LGPL-2.0 (Ron Fries' TIA and POKEY sound), zlib (CoreTone) and MIT (libretro-common) | `prosystem.js`, `.wasm` |
 
 This is the commit libretro's buildbot built for RetroArch 1.22.2 (its core reports "(SVN) 5cd4a43"), which is the
 build Rombie's solo NES runs (Nostalgist's cores come from `arianrhodsandlot/retroarch-emscripten-build@v1.22.2`,
@@ -212,10 +217,34 @@ jitter is off in the libretro core, so they only feed a count. The other is TIA'
 instead of drawing it, and keeping it could copy a line from the timeline the rollback left. The whole state therefore
 differs on the frame a rollback goes back to and the one after it, while game memory and picture match.
 
+ProSystem is the commit Rombie's solo 7800 runs (`prosystem/` in this repo, which builds it without a patch), so a solo
+game's state loads here. It runs with no BIOS, as solo play does: it looks for `7800 BIOS (U).rom` or `(E).rom` in
+its system folder, and the engine gives it none. It asks the frontend through `RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE`
+whether to save runahead's fast states; the frontend does not answer, so it saves its full state, 49,221 bytes, the
+size of a solo save state. It is built as `prosystem/` builds it (`platform=emscripten`) and compiles its own copy of
+libretro-common's helpers, so the frontend is compiled against fceumm's `libretro.h` and links nothing more.
+
+Its full state holds the CPU's registers, the cartridge's bank and the first 16 KB of memory, and leaves out two things
+the game goes on to depend on, so a rolled-back engine drifted from one that ran straight (Rampage: game memory
+differed on 228 of 6,000 frames). One is the CPU's place in its scanline, which carries into the next frame, so after
+a load a frame ended at a different instruction. The other is the RIOT's timer and port directions, which games read
+through INTIM and INTFLG. `patches/prosystem.patch` keeps both, ten values, behind a marker at the end of the state,
+where ProSystem writes nothing, and zero-fills the rest. Neither the state's size nor anything before its end
+changes: the unpatched core (solo play) loads a state from this engine and ignores the end, and a state without the
+marker (from solo play) leaves the values as they are; both were checked with Rampage. A Souper cartridge's state
+fills all 49,221 bytes, so it has no room for them and runs as before. The core's files have CRLF line endings
+upstream (but `libretro.c`), so the patch keeps them on those lines, and `.gitattributes` keeps it byte for byte.
+
+What a load still leaves behind is the picture: with display DMA off (a game's scene change), Maria draws nothing,
+and the frame shows whatever the last drawn one left, which after a rollback can be from the timeline it undid (3
+frames of Rampage's 6,000, the same with and without the patch). The game never sees it, and the whole state is exact,
+so Rombie compares the whole state for the 7800 and not the picture, as for ClownMDEmu.
+
 ## Building
 
 From the repo root, with the submodules checked out (`git submodule update --init netplay/fceumm netplay/supafaust
-netplay/pcsx_rearmed netplay/gearsystem netplay/emu2413 netplay/clownmdemu-libretro netplay/stella`, then
+netplay/pcsx_rearmed netplay/gearsystem netplay/emu2413 netplay/clownmdemu-libretro netplay/stella
+netplay/prosystem-libretro`, then
 `git -C netplay/clownmdemu-libretro submodule update --init --recursive`; pcsx_rearmed's own submodules are not needed):
 
 ```sh
@@ -239,10 +268,12 @@ d838fec78e3309b2ac92acea7060e11b2d9d4447c625b0c31ee55bf7bf37ffed  clownmdemu.js
 404bb448906c9d9d0947a2047350b8453ec41536ab2d83c49ce9a1d04d1d2c98  clownmdemu.wasm
 06bc91a7fda9dfc6ca31dc548c78e1a02798c6ec951563eca5b152e3aa6128a6  stella.js
 49ee62e7e9d4a6d979ebf9d5c30230bf5072206d6004d154b4e690e40059fffe  stella.wasm
+6a9f395fd7ee4cb28c3ca9c3d26137714a7c62d57a63f2b3e18f92de88169e0c  prosystem.js
+76a2e45157948b07ef767ae02fb9394951baeee01b2b87ccb977ef0987cd8d4b  prosystem.wasm
 ```
 
-The first ten are `rombie-netplay-engine-2026.0.2`'s files, unchanged; Stella's two are new. Two builds from the same
-checkout gave the same twelve files.
+The first ten are `rombie-netplay-engine-2026.0.2`'s files, unchanged; Stella's and ProSystem's four are new. Two
+builds from the same checkout gave the same fourteen files.
 
 In `rombie-netplay-engine-2026.0.2` every file changed from 2026.0.1: the frontend's save RAM calls take a memory id, it limits
 a core's log messages, the Worker script has the save folder messages, and both are built into each core's files.
@@ -255,7 +286,7 @@ differs where it is said to (NES's sound filter, PS1's save counter, SNES's DSP-
 
 `test.html` checks the engine on its own. Serve this folder over HTTP after building (a Worker will not start from
 `file://`), for example `python -m http.server 8642` here, open `http://localhost:8642/test.html` (the NES engine;
-`test.html?engine=out/supafaust.js` for SNES; `?engine=out/pcsx_rearmed.js` for PS1, picking all of a disc's files and a BIOS; `?engine=out/gearsystem.js` for a Game Gear game's link, with the link on and engine B on the second console as a session's guest has it (`?options=gearsystem_link_enable=Disabled` for a Master System game); `?engine=out/clownmdemu.js` for Genesis or a Sega CD disc (`?options=clownmdemu_input_protocol=ea` or `=sega` for a multitap adapter); `?engine=out/stella.js` for a 2600 game, with `?devices=` giving the port devices (`257,257` joysticks, `1281,1281` paddles, `1537,1537` driving controllers), `?stick=1` moving each scripted player's left stick as well, and `?ports=4` scripting four players (four paddles); `?options=key=value;key=value` and `?optionsB=` to set core options, and `?scriptFrames=` to keep a longer run's input script, so a shorter run stops partway through the same play), pick a ROM and run:
+`test.html?engine=out/supafaust.js` for SNES; `?engine=out/pcsx_rearmed.js` for PS1, picking all of a disc's files and a BIOS; `?engine=out/gearsystem.js` for a Game Gear game's link, with the link on and engine B on the second console as a session's guest has it (`?options=gearsystem_link_enable=Disabled` for a Master System game); `?engine=out/clownmdemu.js` for Genesis or a Sega CD disc (`?options=clownmdemu_input_protocol=ea` or `=sega` for a multitap adapter); `?engine=out/stella.js` for a 2600 game, with `?devices=` giving the port devices (`257,257` joysticks, `1281,1281` paddles, `1537,1537` driving controllers), `?stick=1` moving each scripted player's left stick as well, and `?ports=4` scripting four players (four paddles); `?engine=out/prosystem.js` for a 7800 game; `?options=key=value;key=value` and `?optionsB=` to set core options, and `?scriptFrames=` to keep a longer run's input script, so a shorter run stops partway through the same play), pick a ROM and run:
 
 - **Determinism**: engine A runs scripted two-player input straight; engine B runs the same input the way a guest's
   rollback session does (player 1's input arrives up to 7 frames late, B repeats the last one it knows, then rolls back
@@ -358,6 +389,19 @@ bytes but for those, with each controller, and the final states match. A save ta
 1,328 bytes). A solo state from `rombie-stella-engine-2026.0.1` (Paddles, with the patch's block) loads with
 `?devices=1281,1281`, draws its first frame and plays on.
 
+ProSystem, 6,000 frames each (426 rollbacks), the same runs on the same PC (2026-11-16). The test ROM is a 7800 one
+written for these checks that draws the input registers as stripes, two-button mode:
+
+| Game | Players | Frame | Stress (8 back, every frame) | Mismatches (game memory, picture, whole saved state) |
+| --- | --- | --- | --- | --- |
+| Rampage | 2 | 0.40 ms | 59.7 fps, 29% | 0, 3, 0 (without the patch: 228 from frame 838, 3, 863) |
+| Test ROM | 2 | 0.42 ms | 60.0 fps, 11% | 0, 0, 0 (the same without the patch) |
+| Control (B gets inputs A never sees), Rampage | 2 | | | fails from frame 3,001, as it must |
+
+The final states match in every run. A save takes 5 to 11 us and a load 12 to 21 us (49,221 bytes). A solo Rampage
+state from `rombie-prosystem-engine-2026.0.0`, in play, loads, draws its first frame and plays on, and a state this
+engine saved loads on that unpatched core and plays on.
+
 ## Licenses
 
 fceumm and Supafaust are GPL-2.0-or-later; their own copies of the license (`Copying`, `COPYING`) are in the
@@ -389,3 +433,9 @@ Stella is GPL-2.0-or-later (its `Copyright.txt`: "either version 2 of the Licens
 from z26, which is GPL version 2 only, is left out, as in `stella/`. Its engine compiles in what `stella/`'s does,
 under their own licenses: JSON for Modern C++ 3.11.3 (MIT), Blargg's NTSC filter (LGPL-2.1-or-later), RSA Data
 Security's MD5 code (its own notice, in `MD5.hxx`), David Welch's Thumbulator (public domain) and `libretro.h` (MIT).
+
+ProSystem is GPL-2.0-or-later (each `core/` file: "either version 2 of the License, or (at your option) any later
+version"; its `License.txt` is an older printing of `LICENSES/GPL-2.0.txt`), and so is `patches/prosystem.patch`. Its
+engine compiles in what `prosystem/`'s does, under their own licenses: Ron Fries' TIA and POKEY sound (version 2 of the
+GNU Library General Public License, whose section 3 lets them go under the GPL; their legend stays in the source),
+Osman Celimli's CoreTone (zlib, `LICENSES/bupboop-zlib.txt`) and libretro-common (MIT).

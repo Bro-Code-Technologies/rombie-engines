@@ -5,7 +5,7 @@
 #   docker run --rm -v "${PWD}:/repo" rombie-netplay sh /repo/netplay/build.sh
 # Output: netplay/out/fceumm.js and .wasm (NES), supafaust.js and .wasm (SNES), pcsx_rearmed.js and
 # .wasm (PS1), gearsystem.js and .wasm (Master System and Game Gear), clownmdemu.js and .wasm (Genesis and
-# Sega CD), stella.js and .wasm (Atari 2600), and SHA256SUMS.
+# Sega CD), stella.js and .wasm (Atari 2600), prosystem.js and .wasm (Atari 7800), and SHA256SUMS.
 set -eu
 REPO=/repo
 W=/work
@@ -235,9 +235,33 @@ em++ -O3 \
   -o "$W/out/stella.js"
 unset EMCC_CFLAGS
 
+# ProSystem (Atari 7800), the commit Rombie's solo build runs (prosystem/), so a solo game's state loads here. The
+# frontend does not answer RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE, so the core keeps its full state (49,221 bytes),
+# the size a solo save state has. The core compiles its own copy of libretro-common's helpers. The patch keeps what
+# its state leaves out in the state's unused end, so a loaded state runs on exactly as the saved one would.
+copy_source netplay/prosystem-libretro prosystem
+git -C "$W/prosystem" apply "$REPO/netplay/patches/prosystem.patch"
+echo "applied patches/prosystem.patch"
+# The ProSystem commit's date (2026-08-22 13:45:00 UTC). Its makefile finds no git commit in the work copy, so the
+# version stays "1.3e".
+export SOURCE_DATE_EPOCH=1787406300
+(cd "$W/prosystem" && emmake make -j"$N" platform=emscripten)
+emcc -O3 \
+  -I "$LRC/include" \
+  "$W/engine/netplay-main.c" "$W/prosystem/prosystem_libretro_emscripten.bc" \
+  -sENVIRONMENT=worker \
+  -sALLOW_MEMORY_GROWTH=1 \
+  -sINITIAL_MEMORY=33554432 \
+  -sEXPORTED_FUNCTIONS=_malloc,_free \
+  -sEXPORTED_RUNTIME_METHODS=FS,UTF8ToString,stringToNewUTF8,HEAPU8,HEAP16 \
+  --post-js "$W/engine/netplay-worker.js" \
+  -o "$W/out/prosystem.js"
+
 mkdir -p "$OUT"
 cp "$W/out/fceumm.js" "$W/out/fceumm.wasm" "$W/out/supafaust.js" "$W/out/supafaust.wasm" \
   "$W/out/pcsx_rearmed.js" "$W/out/pcsx_rearmed.wasm" "$W/out/gearsystem.js" "$W/out/gearsystem.wasm" \
-  "$W/out/clownmdemu.js" "$W/out/clownmdemu.wasm" "$W/out/stella.js" "$W/out/stella.wasm" "$OUT/"
+  "$W/out/clownmdemu.js" "$W/out/clownmdemu.wasm" "$W/out/stella.js" "$W/out/stella.wasm" \
+  "$W/out/prosystem.js" "$W/out/prosystem.wasm" "$OUT/"
 (cd "$OUT" && sha256sum fceumm.js fceumm.wasm supafaust.js supafaust.wasm pcsx_rearmed.js pcsx_rearmed.wasm \
-  gearsystem.js gearsystem.wasm clownmdemu.js clownmdemu.wasm stella.js stella.wasm | tee SHA256SUMS)
+  gearsystem.js gearsystem.wasm clownmdemu.js clownmdemu.wasm stella.js stella.wasm prosystem.js prosystem.wasm \
+  | tee SHA256SUMS)
