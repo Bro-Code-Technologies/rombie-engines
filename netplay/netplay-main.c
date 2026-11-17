@@ -15,7 +15,7 @@
 #include <emscripten.h>
 #include "libretro.h"
 
-#define PORTS 4
+#define PORTS 8
 /* A power of two; the rollback window is one less, since the slot for the frame about to run
  * is overwritten when that frame is saved. */
 #define RING_SLOTS 16
@@ -27,6 +27,8 @@ static struct {
   uint16_t buttons[PORTS];
   int16_t analog[PORTS][4]; /* left x, left y, right x, right y */
 } input;
+/* Per port, the reads that found a button held, for the test page to see which ports a core polls. */
+static uint32_t input_reads[PORTS];
 
 static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
 static uint32_t *frame_rgba;
@@ -252,9 +254,13 @@ static void input_poll(void) {}
 static int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
   if (port >= PORTS) return 0;
   switch (device & RETRO_DEVICE_MASK) {
-    case RETRO_DEVICE_JOYPAD:
-      if (id == RETRO_DEVICE_ID_JOYPAD_MASK) return (int16_t)input.buttons[port];
-      return id < 16 ? (input.buttons[port] >> id) & 1 : 0;
+    case RETRO_DEVICE_JOYPAD: {
+      int16_t held = id == RETRO_DEVICE_ID_JOYPAD_MASK ? (int16_t)input.buttons[port]
+                     : id < 16                         ? (input.buttons[port] >> id) & 1
+                                                       : 0;
+      if (held) input_reads[port]++;
+      return held;
+    }
     case RETRO_DEVICE_ANALOG:
       if (index <= RETRO_DEVICE_INDEX_ANALOG_RIGHT && id <= RETRO_DEVICE_ID_ANALOG_Y)
         return input.analog[port][index * 2 + id];
@@ -364,6 +370,9 @@ EMSCRIPTEN_KEEPALIVE void np_set_input(unsigned port, unsigned buttons, int lx, 
   input.analog[port][2] = (int16_t)rx;
   input.analog[port][3] = (int16_t)ry;
 }
+
+EMSCRIPTEN_KEEPALIVE uint32_t np_input_reads(unsigned port) { return port < PORTS ? input_reads[port] : 0; }
+EMSCRIPTEN_KEEPALIVE void np_clear_input_reads(void) { memset(input_reads, 0, sizeof input_reads); }
 
 EMSCRIPTEN_KEEPALIVE void np_set_av_enabled(int video, int sound) {
   video_enabled = video;

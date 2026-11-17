@@ -45,7 +45,7 @@ order; the engine posts `{ type: 'ready' }` when it is up.
 | Request | Reply |
 | --- | --- |
 | `load { rom, name, files?, options?, devices?, sram?, system? }`: the game's bytes and file name, or for a disc its files as `[{ name, data }]` with `data` a `Blob`, mounted read-only and read as the core asks (never copied whole into memory; `name` is the one to load, a `.cue` names the others); core options as `{ key: value }`, a device per port, save RAM, and files for the core's system folder (a BIOS) as `[{ name, data }]`. The core starts here, once its system folder and options are in place, since some look for their BIOS as they start | `loaded { library, fps, sampleRate, baseWidth, baseHeight, aspectRatio, stateSize, sramSize, frame }` |
-| `run { from, inputs, audioFrom?, video?, hashes? }`: run frames from `from` with the given inputs. When `from` is behind the engine it first rolls back to it from the ring. Sound is kept for frames from `audioFrom` on (default `from`); only the last frame is drawn, unless `video: false` | `ran { frame, video, audio, hashes, memoryHashes, videoHashes, engineMs }`: the next frame to run, the picture `{ width, height, pixels }` (RGBA), the sound (interleaved stereo `Int16Array` buffer), and with `hashes: true` three per-frame hash arrays (see below) |
+| `run { from, inputs, audioFrom?, video?, hashes?, reads? }`: run frames from `from` with the given inputs. When `from` is behind the engine it first rolls back to it from the ring. Sound is kept for frames from `audioFrom` on (default `from`); only the last frame is drawn, unless `video: false` | `ran { frame, video, audio, hashes, memoryHashes, videoHashes, engineMs, reads }`: the next frame to run, the picture `{ width, height, pixels }` (RGBA), the sound (interleaved stereo `Int16Array` buffer), with `hashes: true` three per-frame hash arrays (see below), and with `reads: true`, per port, how many of the core's input reads during these frames found a button held (for `test.html`, to see which ports a core polls) |
 | `checksum { frame }` | `checksum { frame, hash }`: the hash of the state before `frame`, or `null` when the ring no longer holds it |
 | `save` | `state { frame, data }`: the full state, which is the state before `frame` |
 | `loadState { data, frame }` | `stateLoaded { frame }`: the state becomes the state before `frame`, and the ring starts over |
@@ -72,7 +72,7 @@ per entry the BIOS's backup calls make), not as save RAM, and they are not part 
 ClownMDEmu sends one for every Sega CD BIOS call, which made a Sega CD frame take 25 ms instead of 3.6. RetroArch prints
 none unless its log is verbose; the frontend prints a core's first 64 lines, then only errors.
 
-**Inputs.** `inputs` is an `Int16Array` buffer of 20 values per frame: for each of four ports, the buttons as
+**Inputs.** `inputs` is an `Int16Array` buffer of 40 values per frame: for each of eight ports, the buttons as
 libretro's joypad bitmask (bit `RETRO_DEVICE_ID_JOYPAD_*`: B 0, Y 1, Select 2, Start 3, Up 4, Down 5, Left 6,
 Right 7, A 8, X 9, L 10, R 11, L2 12, R2 13, L3 14, R3 15), then the left stick's x and y and the right stick's x
 and y.
@@ -289,13 +289,14 @@ differs where it is said to (NES's sound filter, PS1's save counter, SNES's DSP-
 
 `test.html` checks the engine on its own. Serve this folder over HTTP after building (a Worker will not start from
 `file://`), for example `python -m http.server 8642` here, open `http://localhost:8642/test.html` (the NES engine;
-`test.html?engine=out/supafaust.js` for SNES; `?engine=out/pcsx_rearmed.js` for PS1, picking all of a disc's files and a BIOS; `?engine=out/gearsystem.js` for a Game Gear game's link, with the link on and engine B on the second console as a session's guest has it (`?options=gearsystem_link_enable=Disabled` for a Master System game); `?engine=out/clownmdemu.js` for Genesis or a Sega CD disc (`?options=clownmdemu_input_protocol=ea` or `=sega` for a multitap adapter); `?engine=out/stella.js` for a 2600 game, with `?devices=` giving the port devices (`257,257` joysticks, `1281,1281` paddles, `1537,1537` driving controllers), `?stick=1` moving each scripted player's left stick as well, and `?ports=4` scripting four players (four paddles); `?engine=out/prosystem.js` for a 7800 game; `?options=key=value;key=value` and `?optionsB=` to set core options, and `?scriptFrames=` to keep a longer run's input script, so a shorter run stops partway through the same play), pick a ROM and run:
+`test.html?engine=out/supafaust.js` for SNES; `?engine=out/pcsx_rearmed.js` for PS1, picking all of a disc's files and a BIOS; `?engine=out/gearsystem.js` for a Game Gear game's link, with the link on and engine B on the second console as a session's guest has it (`?options=gearsystem_link_enable=Disabled` for a Master System game); `?engine=out/clownmdemu.js` for Genesis or a Sega CD disc (`?options=clownmdemu_input_protocol=ea` or `=sega` for a multitap adapter); `?engine=out/stella.js` for a 2600 game, with `?devices=` giving the port devices (`257,257` joysticks, `1281,1281` paddles, `1537,1537` driving controllers), `?stick=1` moving each scripted player's left stick as well, and `?ports=` scripting up to eight players (`4` for four paddles, `8` for two multitaps); `?engine=out/prosystem.js` for a 7800 game; `?options=key=value;key=value` and `?optionsB=` to set core options, and `?scriptFrames=` to keep a longer run's input script, so a shorter run stops partway through the same play), pick a ROM and run:
 
-- **Determinism**: engine A runs scripted two-player input straight; engine B runs the same input the way a guest's
-  rollback session does (player 1's input arrives up to 7 frames late, B repeats the last one it knows, then rolls back
-  and runs again when the real one comes). Game memory and picture must match on every frame; the whole state is
-  reported too, with the parts that differ named. "real time" runs it at 60 fps to watch, and "control" gives B inputs
-  A never sees, which must fail.
+- **Determinism**: engine A runs scripted two-player input straight (`?ports=` for more); engine B runs the same input
+  the way a guest's rollback session does (every scripted player's input arrives up to 7 frames late, B repeats the
+  last it knows, then rolls back and runs again when the real one comes). Game memory and picture must match on every
+  frame; the whole state is reported too, with the parts that differ named. It ends with how many of A's input reads
+  found a button held on each port, which must be some on every scripted port. "real time" runs it at 60 fps to watch,
+  and "control" gives B inputs A never sees, which must fail.
 - **Timings**: save, load and one frame, measured inside the engine.
 - **Stress**: every frame, roll back 8 frames and run them again plus one new frame, at 60 fps, counting the page's
   message round trips.

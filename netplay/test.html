@@ -90,8 +90,8 @@ const OPTIONS_B = {
 const STELLA = /stella/.test(ENGINE_URL)
 const DEVICES = PARAMS.has('devices') ? PARAMS.get('devices').split(',').map(Number) : null
 const STICK = PARAMS.has('stick')
-const SCRIPTED_PORTS = Number(PARAMS.get('ports') || 2)
-const PORTS = 4
+const PORTS = 8
+const SCRIPTED_PORTS = Math.min(PORTS, Number(PARAMS.get('ports') || 2))
 const VALUES_PER_FRAME = PORTS * 5
 const FRAME_MS = 1000 / 60
 const JOYPAD = { B: 0, Y: 1, SELECT: 2, START: 3, UP: 4, DOWN: 5, LEFT: 6, RIGHT: 7, A: 8, X: 9 }
@@ -286,15 +286,17 @@ async function runDeterminism(rom) {
   let seed = 7
   const delay = () => ((seed = (seed * 1103515245 + 12345) >>> 0) >>> 16) % 8
 
+  // Every scripted port is late on B, as if each were another PC's player.
+  const remoteValues = SCRIPTED_PORTS * 5
   function inputForB(f) {
     const known = Math.min(f, confirmed)
     const out = truthB.slice(f * VALUES_PER_FRAME, (f + 1) * VALUES_PER_FRAME)
-    const remote = known >= 0 ? truthB.subarray(known * VALUES_PER_FRAME, known * VALUES_PER_FRAME + 5) : new Int16Array(5)
+    const remote = known >= 0 ? truthB.subarray(known * VALUES_PER_FRAME, known * VALUES_PER_FRAME + remoteValues) : new Int16Array(remoteValues)
     out.set(remote, 0)
     return out
   }
   function differs(f) {
-    for (let i = 0; i < 5; i++) if (usedB[f * VALUES_PER_FRAME + i] !== truthB[f * VALUES_PER_FRAME + i]) return true
+    for (let i = 0; i < remoteValues; i++) if (usedB[f * VALUES_PER_FRAME + i] !== truthB[f * VALUES_PER_FRAME + i]) return true
     return false
   }
 
@@ -322,14 +324,16 @@ async function runDeterminism(rom) {
 
   const started = performance.now()
   let next = started
+  const reads = new Array(PORTS).fill(0)
   for (let f = 0; f < frames; f++) {
     const show = realtime || f % 30 === 0 || f === frames - 1
     const inputsA = framesSlice(truth, f, f + 1)
     const [ra, rb] = await Promise.all([
-      a.engine.request({ type: 'run', from: f, inputs: inputsA.buffer, video: show, hashes: true }, [inputsA.buffer]),
+      a.engine.request({ type: 'run', from: f, inputs: inputsA.buffer, video: show, hashes: true, reads: true }, [inputsA.buffer]),
       stepB(f, show),
     ])
     hashA[f] = ra.hashes[0]
+    ra.reads?.forEach((n, port) => (reads[port] += n))
     memA[f] = ra.memoryHashes[0]
     picA[f] = ra.videoHashes[0]
     if (show) { draw($('canvasA'), ra.video); draw($('canvasB'), rb.video) }
@@ -372,9 +376,10 @@ async function runDeterminism(rom) {
   const ok = control ? memory.count > 0 && picture.count > 0 : memory.count === 0 && picture.count === 0
   const said = (c) => `${c.count}${c.first >= 0 ? ` (first at frame ${c.first})` : ''}`
   log(`determinism${control ? ' CONTROL (expected to fail)' : ''}: mismatches in ${frames} frames: game memory ${said(memory)}, picture ${said(picture)}; whole saved state ${said(state)}, final states ${finalSame ? 'identical' : `different in ${stateParts.join(', ')}`}; B rolled back ${rollbacks} times and ran ${rerun} frames again; ${new Set(picA).size} different pictures drawn; ${seconds.toFixed(1)} s`, ok ? 'ok' : 'bad')
+  log(`input reads that found a button held, per port (A): ${reads.map((n, port) => `${port + 1}: ${n}`).join(', ')}`, reads.slice(0, SCRIPTED_PORTS).every((n) => n > 0) ? 'ok' : 'bad')
   a.engine.close()
   b.engine.close()
-  return { control, frames, memory, picture, state, finalSame, stateParts, rollbacks, rerun, seconds, stateSize: a.info.stateSize, library: a.info.library }
+  return { control, frames, memory, picture, state, finalSame, stateParts, rollbacks, rerun, seconds, stateSize: a.info.stateSize, library: a.info.library, reads }
 }
 
 async function runTimings(rom) {

@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 ;(function () {
-  const PORTS = 4
+  const PORTS = 8
   // Per port and frame: buttons (the libretro joypad bitmask), left x, left y, right x, right y.
   const VALUES_PER_PORT = 5
   const VALUES_PER_FRAME = PORTS * VALUES_PER_PORT
@@ -112,6 +112,7 @@
       const videoHashes = msg.hashes ? new Uint32Array(count) : null
       _np_set_video_hashing(msg.hashes ? 1 : 0)
       _np_audio_clear()
+      if (msg.reads) _np_clear_input_reads()
       const start = performance.now()
       for (let i = 0; i < count; i++) {
         const frame = msg.from + i
@@ -135,7 +136,9 @@
       if (video) transfer.push(video.pixels)
       if (audio) transfer.push(audio)
       if (hashes) transfer.push(hashes.buffer, memoryHashes.buffer, videoHashes.buffer)
-      return [{ type: 'ran', frame: _np_frame_number(), video, audio, hashes, memoryHashes, videoHashes, engineMs }, transfer]
+      // For the test page: per port, the reads during these frames that found a button held.
+      const reads = msg.reads ? Array.from({ length: PORTS }, (_, port) => _np_input_reads(port)) : undefined
+      return [{ type: 'ran', frame: _np_frame_number(), video, audio, hashes, memoryHashes, videoHashes, engineMs, reads }, transfer]
     },
 
     checksum(msg) {
