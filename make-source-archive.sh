@@ -35,12 +35,12 @@ while read -r sha path; do
   add_submodule "$path" "$sha"
 done < "$tmp/submodules"
 
-# Handy's lynx/lynxdec.cpp states no license, so Rombie does not hand it out: handy/build.sh leaves it out of the build,
-# and the archive leaves it out too.
+# Handy's lynx/lynxdec.cpp states no license, so Rombie does not hand it out: handy/build.sh and netplay/build.sh leave
+# it out of their builds, and the archive leaves it out too.
 case "$folder" in
-  handy)
-    rm "$tmp/$name/handy/libretro-handy/lynx/lynxdec.cpp"
-    echo "left out handy/libretro-handy/lynx/lynxdec.cpp (it states no license)"
+  handy | netplay)
+    rm "$tmp/$name/$folder/libretro-handy/lynx/lynxdec.cpp"
+    echo "left out $folder/libretro-handy/lynx/lynxdec.cpp (it states no license)"
     ;;
 esac
 

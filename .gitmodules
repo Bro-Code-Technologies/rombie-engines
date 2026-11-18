@@ -86,3 +86,7 @@
 	path = netplay/prosystem-libretro
 	url = https://github.com/libretro/prosystem-libretro.git
 	shallow = true
+[submodule "netplay/libretro-handy"]
+	path = netplay/libretro-handy
+	url = https://github.com/libretro/libretro-handy.git
+	shallow = true

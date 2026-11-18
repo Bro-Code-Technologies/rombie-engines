@@ -5,7 +5,8 @@
 #   docker run --rm -v "${PWD}:/repo" rombie-netplay sh /repo/netplay/build.sh
 # Output: netplay/out/fceumm.js and .wasm (NES), supafaust.js and .wasm (SNES), pcsx_rearmed.js and
 # .wasm (PS1), gearsystem.js and .wasm (Master System and Game Gear), clownmdemu.js and .wasm (Genesis and
-# Sega CD), stella.js and .wasm (Atari 2600), prosystem.js and .wasm (Atari 7800), and SHA256SUMS.
+# Sega CD), stella.js and .wasm (Atari 2600), prosystem.js and .wasm (Atari 7800), handy.js and .wasm (Atari Lynx),
+# and SHA256SUMS.
 set -eu
 REPO=/repo
 W=/work
@@ -257,11 +258,47 @@ emcc -O3 \
   --post-js "$W/engine/netplay-worker.js" \
   -o "$W/out/prosystem.js"
 
+# Handy (Atari Lynx), the commit Rombie's solo build runs (handy/), with its boot ROM change and the ComLynx link:
+# handy_link_consoles Lynxes in the one core on one cable, each PC showing and hearing its own (README.md, The cores).
+# lynx/lynxdec.cpp states no license, so it goes from the build's copy as in handy/build.sh, and a cart needs the
+# player's lynxboot.img.
+copy_source netplay/libretro-handy handy
+git -C "$W/handy" apply "$REPO/netplay/patches/handy.patch"
+echo "applied patches/handy.patch"
+rm -f "$W/handy/lynx/lynxdec.cpp"
+echo "left out lynx/lynxdec.cpp"
+# The libretro-handy commit's date (2026-04-20 17:30:56 UTC). Its makefile finds no git commit in the work copy, so the
+# version stays "0.97".
+export SOURCE_DATE_EPOCH=1776706256
+(cd "$W/handy" && emmake make -j"$N" platform=emscripten)
+# A statically linked Handy leaves libretro-common's helpers to the frontend, as fceumm does: the engine compiles them
+# from Handy's own copy, the list its Makefile.common builds when it is not statically linked. With no VFS from the
+# frontend, its file streams use the VFS implementation. Its copy has no memory stream, which the frontend doesn't use.
+HLRC=$W/handy/libretro-common
+HCOMMON="compat/compat_posix_string.c compat/compat_snprintf.c compat/compat_strcasestr.c
+  compat/compat_strl.c compat/fopen_utf8.c encodings/encoding_utf.c file/file_path.c
+  file/file_path_io.c streams/file_stream.c streams/file_stream_transforms.c
+  string/stdstring.c time/rtime.c vfs/vfs_implementation.c"
+mkdir -p "$W/engine/handy-common"
+emcc -O3 -I "$HLRC/include" -c "$W/engine/netplay-main.c" -o "$W/engine/netplay-main-handy.o"
+for f in $HCOMMON; do
+  emcc -O3 -I "$HLRC/include" -c "$HLRC/$f" -o "$W/engine/handy-common/$(echo "$f" | tr '/' '_').o"
+done
+em++ -O3 \
+  "$W/engine/netplay-main-handy.o" "$W/handy/handy_libretro_emscripten.bc" "$W/engine/handy-common/"*.o \
+  -sENVIRONMENT=worker \
+  -sALLOW_MEMORY_GROWTH=1 \
+  -sINITIAL_MEMORY=33554432 \
+  -sEXPORTED_FUNCTIONS=_malloc,_free \
+  -sEXPORTED_RUNTIME_METHODS=FS,UTF8ToString,stringToNewUTF8,HEAPU8,HEAP16 \
+  --post-js "$W/engine/netplay-worker.js" \
+  -o "$W/out/handy.js"
+
 mkdir -p "$OUT"
 cp "$W/out/fceumm.js" "$W/out/fceumm.wasm" "$W/out/supafaust.js" "$W/out/supafaust.wasm" \
   "$W/out/pcsx_rearmed.js" "$W/out/pcsx_rearmed.wasm" "$W/out/gearsystem.js" "$W/out/gearsystem.wasm" \
   "$W/out/clownmdemu.js" "$W/out/clownmdemu.wasm" "$W/out/stella.js" "$W/out/stella.wasm" \
-  "$W/out/prosystem.js" "$W/out/prosystem.wasm" "$OUT/"
+  "$W/out/prosystem.js" "$W/out/prosystem.wasm" "$W/out/handy.js" "$W/out/handy.wasm" "$OUT/"
 (cd "$OUT" && sha256sum fceumm.js fceumm.wasm supafaust.js supafaust.wasm pcsx_rearmed.js pcsx_rearmed.wasm \
   gearsystem.js gearsystem.wasm clownmdemu.js clownmdemu.wasm stella.js stella.wasm prosystem.js prosystem.wasm \
-  | tee SHA256SUMS)
+  handy.js handy.wasm | tee SHA256SUMS)

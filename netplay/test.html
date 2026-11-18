@@ -46,11 +46,18 @@
   player's left stick (a paddle's or wheel's analog input), and ?ports=4 scripts all four players (four paddles).
   Stella fills RAM and seeds its random numbers from the clock at power-on, so for it engine B starts from engine A's
   state, as a session's guest starts from the host's.
+  ?engine=out/handy.js runs a Lynx game; pick lynxboot.img as its BIOS (the core looks for that name).
+  ?options=handy_link_consoles=N runs N Lynxes on one ComLynx cable in the one core, as every PC of a link session
+  does: engine A shows and hears console 1 and engine B console 2 (handy_link_screen and handy_link_audio), and N
+  players are scripted. Save RAM checks each console's EEPROM, (n << 8) | 0.
+  ?presses=frame:port:BUTTON[:frames],... presses those buttons (names as in JOYPAD, ports from 1, 6 frames unless
+  given) on top of the scripted play, and ?quiet=N leaves every scripted player still for the first N frames but for
+  those presses: a way through a game's menus to its link game.
 -->
 <h1>Netplay engine check</h1>
 <fieldset>
   <label>ROM or disc files <input type="file" id="rom" multiple></label>
-  <label>BIOS (PS1) <input type="file" id="bios"></label>
+  <label>BIOS (PS1, Lynx) <input type="file" id="bios"></label>
   <label>Core state for the solo check <input type="file" id="state"></label>
 </fieldset>
 <fieldset>
@@ -83,18 +90,29 @@ const parseOptions = (text) => Object.fromEntries((text || '').split(';').filter
 const OPTIONS_A = PARAMS.has('options')
   ? parseOptions(PARAMS.get('options'))
   : GEARSYSTEM ? { gearsystem_link_enable: 'Enabled', gearsystem_link_screen: 'Screen 1', gearsystem_link_audio: 'Screen 1' } : {}
+// A Lynx link: every PC runs every console, each showing and hearing its own.
+const HANDY = /handy/.test(ENGINE_URL)
+const LYNXES = HANDY ? Math.max(1, Number(OPTIONS_A.handy_link_consoles || 1)) : 0
 const OPTIONS_B = {
-  ...(PARAMS.has('options') || !GEARSYSTEM ? OPTIONS_A : { ...OPTIONS_A, gearsystem_link_screen: 'Screen 2', gearsystem_link_audio: 'Screen 2' }),
+  ...(GEARSYSTEM && !PARAMS.has('options')
+    ? { ...OPTIONS_A, gearsystem_link_screen: 'Screen 2', gearsystem_link_audio: 'Screen 2' }
+    : LYNXES > 1 ? { ...OPTIONS_A, handy_link_screen: '2', handy_link_audio: '2' } : OPTIONS_A),
   ...parseOptions(PARAMS.get('optionsB')),
 }
 const STELLA = /stella/.test(ENGINE_URL)
 const DEVICES = PARAMS.has('devices') ? PARAMS.get('devices').split(',').map(Number) : null
 const STICK = PARAMS.has('stick')
 const PORTS = 8
-const SCRIPTED_PORTS = Math.min(PORTS, Number(PARAMS.get('ports') || 2))
+const SCRIPTED_PORTS = Math.min(PORTS, Number(PARAMS.get('ports') || (LYNXES > 1 ? LYNXES : 2)))
 const VALUES_PER_FRAME = PORTS * 5
 const FRAME_MS = 1000 / 60
 const JOYPAD = { B: 0, Y: 1, SELECT: 2, START: 3, UP: 4, DOWN: 5, LEFT: 6, RIGHT: 7, A: 8, X: 9 }
+// ?presses=frame:port:BUTTON[:frames] and ?quiet=N: a way through a game's menus (see above).
+const PRESSES = (PARAMS.get('presses') || '').split(',').filter(Boolean).map((item) => {
+  const [at, port, button, length] = item.split(':')
+  return { at: Number(at), port: Number(port) - 1, bit: JOYPAD[button], length: Number(length || 6) }
+})
+const QUIET = Number(PARAMS.get('quiet') || 0)
 
 const $ = (id) => document.getElementById(id)
 const logEl = $('log')
@@ -210,6 +228,8 @@ function scriptedInputs(frames, seed) {
           if (f >= at && f < at + 6) buttons = 1 << bit
         }
       }
+      if (f < QUIET) buttons = 0
+      for (const press of PRESSES) if (press.port === port && f >= press.at && f < press.at + press.length) buttons |= 1 << press.bit
       values[f * VALUES_PER_FRAME + port * 5] = buttons
       values[f * VALUES_PER_FRAME + port * 5 + 1] = stick
     }
@@ -395,12 +415,12 @@ async function runTimings(rom) {
 }
 
 // The core's save RAM through sramGet and sramSet, by libretro memory id: 0 (the console's), or for a Game Gear link
-// its two consoles', 0x100 and 0x200, each written a different pattern and read back to see neither aliases the
-// other.
+// its two consoles', 0x100 and 0x200, or a Lynx's EEPROMs, 0x100 to (N << 8), each written a different pattern and
+// read back to see none aliases another.
 async function runSram(rom) {
   const { engine, info } = await startEngine(rom)
   // 0 is the first console's again in a link, so it is not written separately.
-  const ids = GEARSYSTEM ? [0x100, 0x200] : [0]
+  const ids = GEARSYSTEM ? [0x100, 0x200] : HANDY ? Array.from({ length: LYNXES }, (_, n) => (n + 1) << 8) : [0]
   const out = { library: info.library, ids: {} }
   for (const id of ids) {
     const got = await engine.request({ type: 'sramGet', memory: id })
@@ -538,6 +558,8 @@ $('runStress').onclick = () => run('stress')
 $('runSolo').onclick = () => run('solo')
 $('runSram').onclick = () => run('sram')
 globalThis.netplaySpikeRun = run
+// For a driver working out a game's way into its link mode a frame at a time.
+globalThis.netplayTest = { readRom, startEngine, draw, scriptedInputs, VALUES_PER_FRAME, JOYPAD, OPTIONS_A, OPTIONS_B }
 </script>
 </body>
 </html>

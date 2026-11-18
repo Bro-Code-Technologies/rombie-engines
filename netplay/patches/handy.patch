@@ -1,0 +1,1535 @@
+Rombie's changes to libretro-handy (Bro Code Technologies), for libretro-handy bc55d462, in the netplay engine. Handy's
+own files are under its zlib license, whose second condition this header and the "Changed for Rombie" comments meet:
+"Altered source versions must be plainly marked as such, and must not be misrepresented as being the original
+software."
+
+The boot ROM change, as handy/patches/handy.patch (2026-10-29): the core is built without lynx/lynxdec.cpp, the
+decryption of a cart's loader that Handy's emulated boot ROM uses when the player gives no lynxboot.img. The file states
+no license, so Rombie does not serve it.
+- Makefile.common no longer compiles lynx/lynxdec.cpp; netplay/build.sh also deletes it from the build's copy.
+- CSystem::HLE_BIOS_FE4A, the emulated boot ROM's only call into it, no longer decrypts or loads anything.
+- retro_load_game refuses a cart (returns false, with an error in the log) when there is no valid lynxboot.img,
+  missing or failing Handy's CRC check. A BS93 homebrew file loads straight into RAM and still needs none.
+
+The ComLynx link (2026-11-18): up to eight Lynxes in the one core, their serial ports on one cable, so every PC in a
+netplay session runs every console and only the pads travel. With one console (the default) nothing below applies and
+the core plays as it did.
+- Core options: handy_link_consoles (1-8, read as the game loads), handy_link_screen and handy_link_audio (the
+  console, 1 to handy_link_consoles, this PC shows and hears), handy_link_slice (the system cycles each console runs
+  in its turn, 1024 by default) and handy_link_stagger (the frames between one console's power-on and the next's, 20
+  by default, up to 600, read as the game loads).
+- Handy keeps a Lynx's timing and CPU flags in globals (lynx/system.h). Each linked console keeps its own copy
+  (HandyGlobals), put in place before it runs (HandyGlobalsLoad) and taken back after (HandyGlobalsSave), and its
+  sound buffer, gAudioBuffer, is now a pointer to the console's own. The function statics that carry from one call to
+  the next are members of the console's own objects: CCart::CartAddressStrobe's last strobe, CMikie::UpdateSound's
+  last samples, and CSusie::PaintSprites' quad offsets.
+- retro_run: console n reads input port n. The consoles take turns, a slice of system cycles each, until each has run
+  the frame's cycles. Only the shown console's picture goes out and only the heard one's sound, though every console's
+  sound moves on alike, since a state holds where it is. Select doesn't turn the screen with more than one console, and
+  handy_rot can't change after the start: a state doesn't hold the rotation, which follows the cart.
+- Power-on: console n is switched on n * (handy_link_stagger frames and 1/handy_link_consoles of a frame) after
+  console 1, as players switch theirs on a moment apart, and hears nothing on the cable before. Started on the same
+  cycle, the consoles run alike to the cycle and make the same choices from what they hear, and the games' link never
+  forms (Gauntlet: The Third Encounter, checked). The part of a frame spreads their frames, so their vertical blanks,
+  where Epyx's RedEye protocol sends each player's state in play, don't fall together as they would on one clock.
+- The cable: with more than one console, every console has a cable present (ComLynxCable), and the wire replaces
+  Handy's receive queue and loopback. ComLynx is one line every console drives and hears, idle high, a low bit from
+  any console winning. A console's SERDAT write (and a break) puts a frame of nine bits on the wire, the ninth the
+  parity bit Mikey sends (or PAREVEN with parity off), until its transmit countdown ends (CMikie::ComLynxLinkCallback,
+  the wire in libretro.cpp, timed on the frame clock the consoles share). After each round of turns, every frame that
+  has ended goes into the one receive register of every console that is on (CMikie::ComLynxLinkRx), the sender's too
+  (its echo), merged with each frame that overlapped it: two consoles sending at once both get the AND of their
+  frames, and a framing error when they did not start together, so each sees its echo differ from what it sent, as
+  RedEye checks. A byte still unread is overrun, and with parity on, a wrong ninth bit sets the parity error that
+  Handy's SERCTL lacked (bit 4), all until RESETERR.
+- Timers: a one-shot timer that has stopped, done, counts from the moment a CTLB write starts it again, as Mikey's
+  does. Handy counted the time it had stood still at once and fired at its next update, which cut RedEye's receive
+  timeout (timer 1, started again at each byte) short after the first byte of every message, so no message ever came
+  through whole.
+- The state: "HLNK", the number of consoles, the frames since power-on and the wire's frames, then for each console its
+  size, its ContextSave and what ContextSave leaves out that a linked console needs back exactly
+  (CSystem::LinkContextSave): Mikie's receive queue (the bytes, both pointers, the count waiting, the framing, overrun
+  and parity errors), its display DMA (mLynxLine, mLynxLineDMACounter, mLynxAddr and the display pointer's offset), its
+  pan and attenuation and UpdateSound's last samples; Susie's quad offsets and its math unit's signs; and the cart's
+  last strobe. A state for another number of consoles is refused. With one console the state is the solo core's,
+  ContextSave alone, so a solo state loads and loads back in solo play.
+- Memory: console n's EEPROM is (n << 8) | RETRO_MEMORY_SAVE_RAM, n = 1 to handy_link_consoles, read and written in
+  place (CEEPROM::Data), so the frontend reads and writes it without a reset. System RAM is console 1's on every PC.
+  Console n past 1 saves its EEPROM file with ".n" after the name.
+
+diff --git a/Makefile.common b/Makefile.common
+index 89c398a..4a50984 100644
+--- a/Makefile.common
++++ b/Makefile.common
+@@ -18,7 +18,6 @@ ifeq ($(FRONTEND_SUPPORTS_XRGB8888), 1)
+ endif
+ 
+ SOURCES_CXX := \
+-   $(CORE_DIR)/lynx/lynxdec.cpp \
+    $(CORE_DIR)/lynx/cart.cpp \
+    $(CORE_DIR)/lynx/memmap.cpp \
+    $(CORE_DIR)/lynx/mikie.cpp \
+diff --git a/libretro/libretro.cpp b/libretro/libretro.cpp
+index ad4efd7..a6612e9 100644
+--- a/libretro/libretro.cpp
++++ b/libretro/libretro.cpp
+@@ -141,6 +141,217 @@ static bool libretro_supports_option_categories = false;
+ 
+ static unsigned retro_overclock = 1;
+ 
++/* Changed for Rombie (2026-11-18): the ComLynx link. With handy_link_consoles above 1 the core runs that many Lynxes on
++ * one cable, console n reading input port n. Each PC shows one of them (handy_link_screen) and hears one
++ * (handy_link_audio), and every PC runs all of them alike. Console 1 is lynx; with one console the core is as it was.
++ * Handy keeps a Lynx in globals (system.h), so each console has its own copy, put in place while it runs. */
++#define LINK_MAX_CONSOLES 8
++#define LINK_STATE_MAGIC  "HLNK"
++
++struct link_console
++{
++   CSystem *sys;
++   HandyGlobals globals;
++   uint8_t *framebuffer;
++   UBYTE audio[HANDY_AUDIO_BUFFER_SIZE];
++   ULONG audio_length;
++};
++
++static link_console link_consoles[LINK_MAX_CONSOLES];
++static unsigned link_count  = 1;
++static unsigned link_screen = 0;
++static unsigned link_audio  = 0;
++/* The system cycles each console runs before the next takes its turn (handy_link_slice). */
++static ULONG link_slice     = 1024;
++/* Console n is switched on n * (link_stagger frames and 1/link_count of a frame) after console 1 (handy_link_stagger,
++ * read as the game loads), as players switch theirs on a moment apart. Started on the same cycle, the consoles run
++ * alike to the cycle and make the same choices from what they hear, and the link never forms. Real Lynxes run on their
++ * own crystals, so their frames fall anywhere against each other's; here they share one clock, and the part of a frame
++ * keeps their vertical blanks, where RedEye sends each player's state in play, apart. link_frame counts the frames
++ * since power-on and is in the state. */
++static unsigned link_stagger = 20;
++static uint32_t link_frame   = 0;
++
++static uint64_t link_power_on(unsigned n)
++{
++   return (uint64_t)n * ((uint64_t)link_stagger * retro_cycles_per_frame + retro_cycles_per_frame / link_count);
++}
++
++/* The ComLynx wire: one line every console drives and hears, its idle level high and any console's low bit winning
++ * (wired-AND). Each frame a console sends is kept with the bus cycles it starts and ends at (end 0 while it is still
++ * going out; bus cycles count from power-on, on the frame clock all consoles share). After each round of turns, every
++ * frame that has ended goes to every console that is on, the sender too, merged with every frame that overlapped it:
++ * two consoles sending at once both get the AND of their bytes back, so each sees its echo differ from what it sent,
++ * and when the frames did not start together, a framing error, as on the real cable. Its frames are in the state. */
++#define LINK_WIRE_MAX     32
++#define LINK_WIRE_END     (-1)
++#define LINK_WIRE_FRAMING 0x10000
++
++struct link_wire_frame
++{
++   uint32_t sender;
++   uint32_t data;
++   uint64_t start;
++   uint64_t end;
++   uint32_t delivered;
++};
++
++static link_wire_frame link_wire[LINK_WIRE_MAX];
++static uint32_t link_wire_count = 0;
++
++static uint64_t link_bus_cycle(void)
++{
++   return (uint64_t)link_frame * retro_cycles_per_frame + (ULONG)(gSystemCycleCount - gLastRunCycleCount);
++}
++
++static void link_wire_end(ULONG sender, uint64_t now)
++{
++   for (uint32_t i = 0; i < link_wire_count; i++)
++      if (link_wire[i].sender == sender && !link_wire[i].end)
++         link_wire[i].end = now > link_wire[i].start ? now : link_wire[i].start + 1;
++}
++
++static void link_enter(unsigned n)
++{
++   if (link_count > 1)
++      HandyGlobalsLoad(&link_consoles[n].globals);
++}
++
++static void link_leave(unsigned n)
++{
++   if (link_count > 1)
++      HandyGlobalsSave(&link_consoles[n].globals);
++}
++
++/* A console starts a frame on the wire (its nine bits, or UART_BREAK_CODE), or ends the one it is sending. */
++static void link_tx(int data, ULONG objref)
++{
++   uint64_t now = link_bus_cycle();
++
++   link_wire_end(objref, now);
++   if (data == LINK_WIRE_END)
++      return;
++   if (link_wire_count == LINK_WIRE_MAX)
++   {
++      memmove(link_wire, link_wire + 1, (LINK_WIRE_MAX - 1) * sizeof(link_wire[0]));
++      link_wire_count--;
++   }
++   link_wire[link_wire_count].sender    = objref;
++   link_wire[link_wire_count].data      = (uint32_t)data;
++   link_wire[link_wire_count].start     = now;
++   link_wire[link_wire_count].end       = 0;
++   link_wire[link_wire_count].delivered = 0;
++   link_wire_count++;
++}
++
++/* Every ended frame, earliest first, to every console that is on by the end of the round (bus cycle now); then the
++ * frames nothing still to come can overlap are let go. */
++static void link_wire_settle(uint64_t now)
++{
++   uint64_t open_start = UINT64_MAX;
++   uint32_t kept       = 0;
++
++   for (;;)
++   {
++      int x = -1;
++      uint32_t value;
++      uint32_t framing = 0;
++
++      for (uint32_t i = 0; i < link_wire_count; i++)
++         if (link_wire[i].end && !link_wire[i].delivered &&
++               (x < 0 || link_wire[i].end < link_wire[x].end ||
++                (link_wire[i].end == link_wire[x].end && link_wire[i].sender < link_wire[x].sender)))
++            x = (int)i;
++      if (x < 0)
++         break;
++      value = link_wire[x].data;
++      for (uint32_t j = 0; j < link_wire_count; j++)
++      {
++         if ((int)j == x || link_wire[j].start >= link_wire[x].end ||
++               (link_wire[j].end && link_wire[j].end <= link_wire[x].start))
++            continue;
++         if (value == UART_BREAK_CODE || link_wire[j].data == UART_BREAK_CODE)
++            value = UART_BREAK_CODE;
++         else
++            value &= link_wire[j].data;
++         if (link_wire[j].start != link_wire[x].start)
++            framing = LINK_WIRE_FRAMING;
++      }
++      link_wire[x].delivered = 1;
++      for (unsigned k = 0; k < link_count; k++)
++      {
++         if (link_power_on(k) >= now)
++            continue;
++         link_enter(k);
++         link_consoles[k].sys->ComLynxLinkRx((int)(value | framing));
++         gNextTimerEvent = gSystemCycleCount;
++         link_leave(k);
++      }
++   }
++
++   for (uint32_t i = 0; i < link_wire_count; i++)
++      if (!link_wire[i].end && link_wire[i].start < open_start)
++         open_start = link_wire[i].start;
++   for (uint32_t i = 0; i < link_wire_count; i++)
++      if (!(link_wire[i].delivered && link_wire[i].end <= open_start))
++         link_wire[kept++] = link_wire[i];
++   link_wire_count = kept;
++}
++
++/* The consoles that are on take turns, link_slice system cycles each, until every one has run the frame's cycles, and
++ * the wire delivers what has ended after each round. A console switched on during the frame runs from there. */
++static void link_run_frame(void)
++{
++   unsigned n;
++   ULONG done           = 0;
++   uint64_t frame_start = (uint64_t)link_frame * retro_cycles_per_frame;
++
++   for (n = 0; n < link_count; n++)
++   {
++      uint64_t on = link_power_on(n);
++      link_enter(n);
++      gLastRunCycleCount = gSystemCycleCount;
++      if (on > frame_start && on < frame_start + retro_cycles_per_frame)
++         gLastRunCycleCount -= (ULONG)(on - frame_start);
++      link_leave(n);
++   }
++
++   while (done < retro_cycles_per_frame)
++   {
++      done = (retro_cycles_per_frame - done > link_slice) ? done + link_slice : retro_cycles_per_frame;
++      for (n = 0; n < link_count; n++)
++      {
++         CSystem *sys = link_consoles[n].sys;
++         if (link_power_on(n) >= frame_start + done)
++            continue;
++         link_enter(n);
++         while (gSystemCycleCount - gLastRunCycleCount < done)
++         {
++            sys->Update();
++            for (int lcv = 1; lcv < retro_overclock; lcv++)
++               sys->Overclock();
++         }
++         link_leave(n);
++      }
++      link_wire_settle(frame_start + done);
++   }
++   link_frame++;
++}
++
++static void link_delete_all(void)
++{
++   for (unsigned n = 0; n < LINK_MAX_CONSOLES; n++)
++   {
++      if (link_consoles[n].sys)
++      {
++         link_consoles[n].sys->SaveEEPROM();
++         delete link_consoles[n].sys;
++         link_consoles[n].sys = NULL;
++      }
++   }
++   lynx = 0;
++}
++
+ static void retro_audio_buff_status_cb(
+       bool active, unsigned occupancy, bool underrun_likely)
+ {
+@@ -590,6 +801,10 @@ static void lynx_rotate(void);
+ 
+ static UBYTE* lynx_display_callback(ULONG objref)
+ {
++   /* Changed for Rombie (2026-11-18): a linked console that isn't shown draws into its own buffer, unseen. */
++   if (objref != link_screen)
++      return (UBYTE*)link_consoles[objref].framebuffer;
++
+    if(!video_out_enabled)
+       return (UBYTE*)framebuffer;
+ 
+@@ -647,6 +862,13 @@ static UBYTE* lynx_display_callback(ULONG objref)
+    return (UBYTE*)framebuffer;
+ }
+ 
++/* Changed for Rombie (2026-11-18): every linked console draws the same way, each into its own buffer. */
++static void link_display_attributes(ULONG format, ULONG pitch)
++{
++   for (unsigned n = 0; n < link_count; n++)
++      link_consoles[n].sys->DisplaySetAttributes(lynx_rot, format, pitch, lynx_display_callback, (ULONG)n);
++}
++
+ static void lynx_rotate(void)
+ {
+    if (!lynx)
+@@ -696,37 +918,22 @@ static void lynx_rotate(void)
+    switch (RETRO_PIX_DEPTH)
+    {
+       case 15:
+-         lynx->DisplaySetAttributes(lynx_rot,
+-               MIKIE_PIXEL_FORMAT_16BPP_555,
+-               RETRO_LYNX_WIDTH * 2,
+-               lynx_display_callback, (ULONG)0);
++         link_display_attributes(MIKIE_PIXEL_FORMAT_16BPP_555, RETRO_LYNX_WIDTH * 2);
+          break;
+ #if defined(ABGR1555)
+       case 16:
+-         lynx->DisplaySetAttributes(lynx_rot,
+-               MIKIE_PIXEL_FORMAT_16BPP_BGR555,
+-               RETRO_LYNX_WIDTH * 2,
+-               lynx_display_callback, (ULONG)0);
++         link_display_attributes(MIKIE_PIXEL_FORMAT_16BPP_BGR555, RETRO_LYNX_WIDTH * 2);
+          break;
+ #else
+       case 16:
+-         lynx->DisplaySetAttributes(lynx_rot,
+-               MIKIE_PIXEL_FORMAT_16BPP_565,
+-               RETRO_LYNX_WIDTH * 2,
+-               lynx_display_callback, (ULONG)0);
++         link_display_attributes(MIKIE_PIXEL_FORMAT_16BPP_565, RETRO_LYNX_WIDTH * 2);
+          break;
+ #endif
+       case 24:
+-         lynx->DisplaySetAttributes(lynx_rot,
+-               MIKIE_PIXEL_FORMAT_32BPP,
+-               RETRO_LYNX_WIDTH * 4,
+-               lynx_display_callback, (ULONG)0);
++         link_display_attributes(MIKIE_PIXEL_FORMAT_32BPP, RETRO_LYNX_WIDTH * 4);
+          break;
+       default:
+-         lynx->DisplaySetAttributes(lynx_rot,
+-               MIKIE_PIXEL_FORMAT_32BPP,
+-               RETRO_LYNX_WIDTH * 4,
+-               lynx_display_callback, (ULONG)0);
++         link_display_attributes(MIKIE_PIXEL_FORMAT_32BPP, RETRO_LYNX_WIDTH * 4);
+          break;
+    }
+ }
+@@ -757,7 +964,10 @@ static void check_variables(void)
+       else if (strcmp(var.value, "Auto") == 0)
+          lynx_rot = RETRO_LYNX_ROTATE_AUTO;
+ 
+-      if (initialized &&
++      /* Changed for Rombie (2026-11-18): linked consoles keep the rotation they started with, which no state holds. */
++      if (initialized && link_count > 1)
++         lynx_rot = old_lynx_rot;
++      else if (initialized &&
+           (lynx_rot != old_lynx_rot))
+          lynx_rotation_pending = ROTATION_PENDING_CORE;
+    }
+@@ -844,6 +1054,39 @@ static void check_variables(void)
+        (lynx_lcd_ghosting != old_lynx_lcd_ghosting))
+       lcd_ghosting_init();
+ 
++   /* Changed for Rombie (2026-11-18): which linked console this PC shows and hears (1 to handy_link_consoles), and
++    * the system cycles each runs in its turn. */
++   link_screen = 0;
++   var.key     = "handy_link_screen";
++   var.value   = NULL;
++   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
++   {
++      unsigned n = strtoul(var.value, NULL, 10);
++      if (n >= 1 && n <= link_count)
++         link_screen = n - 1;
++   }
++   if (link_consoles[link_screen].framebuffer)
++      framebuffer = link_consoles[link_screen].framebuffer;
++
++   link_audio = 0;
++   var.key    = "handy_link_audio";
++   var.value  = NULL;
++   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
++   {
++      unsigned n = strtoul(var.value, NULL, 10);
++      if (n >= 1 && n <= link_count)
++         link_audio = n - 1;
++   }
++
++   var.key   = "handy_link_slice";
++   var.value = NULL;
++   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
++   {
++      ULONG slice = strtoul(var.value, NULL, 10);
++      if (slice >= 16)
++         link_slice = slice;
++   }
++
+    var.key               = "handy_overclock";
+    var.value             = NULL;
+ 
+@@ -878,21 +1121,30 @@ void retro_init(void)
+ 
+ void retro_reset(void)
+ {
+-   if(lynx)
++   /* Changed for Rombie (2026-11-18): every linked console */
++   for (unsigned n = 0; lynx && n < link_count; n++)
+    {
+-      lynx->SaveEEPROM();
+-      lynx->Reset();
++      link_enter(n);
++      link_consoles[n].sys->SaveEEPROM();
++      link_consoles[n].sys->Reset();
++      link_leave(n);
+    }
++   link_frame      = 0;
++   link_wire_count = 0;
+ }
+ 
+ void retro_deinit(void)
+ {
+-   if(lynx)
++   /* Changed for Rombie (2026-11-18): every linked console, and each one's buffer (console 1's below) */
++   link_delete_all();
++   for (unsigned n = 1; n < LINK_MAX_CONSOLES; n++)
+    {
+-      lynx->SaveEEPROM();
+-      delete lynx;
+-      lynx=0;
++      free(link_consoles[n].framebuffer);
++      link_consoles[n].framebuffer = NULL;
+    }
++   framebuffer = link_consoles[0].framebuffer;
++   link_consoles[0].framebuffer = NULL;
++   link_count = 1;
+ 
+    if (framebuffer)
+ #if defined(_3DS)
+@@ -1003,30 +1255,40 @@ void retro_run(void)
+       check_variables();
+ 
+    input_poll_cb();
+-   if (libretro_supports_input_bitmasks)
++   /* Changed for Rombie (2026-11-18): console n reads input port n. Select turns the screen only with one console. */
++   for (unsigned port = 0; port < link_count; port++)
+    {
+-      int16_t ret = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0,
+-            RETRO_DEVICE_ID_JOYPAD_MASK);
+-      for (i = 0; i < sizeof(btn_map_no_rot) / sizeof(map); i++)
+-         res |= ret & (1 << btn_map[i].retro) ? (btn_map[i].lynx) : 0;
+-      select_button = ret & (1 << RETRO_DEVICE_ID_JOYPAD_SELECT);
+-   }
+-   else
+-   {
+-      for (i = 0; i < sizeof(btn_map_no_rot) / sizeof(map); ++i)
+-         res |= input_state_cb(0, RETRO_DEVICE_JOYPAD, 0,
+-               btn_map[i].retro) ? btn_map[i].lynx : 0;
+-      select_button = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0,
+-            RETRO_DEVICE_ID_JOYPAD_SELECT);
++      res = 0;
++      if (libretro_supports_input_bitmasks)
++      {
++         int16_t ret = input_state_cb(port, RETRO_DEVICE_JOYPAD, 0,
++               RETRO_DEVICE_ID_JOYPAD_MASK);
++         for (i = 0; i < sizeof(btn_map_no_rot) / sizeof(map); i++)
++            res |= ret & (1 << btn_map[i].retro) ? (btn_map[i].lynx) : 0;
++         if (port == 0)
++            select_button = ret & (1 << RETRO_DEVICE_ID_JOYPAD_SELECT);
++      }
++      else
++      {
++         for (i = 0; i < sizeof(btn_map_no_rot) / sizeof(map); ++i)
++            res |= input_state_cb(port, RETRO_DEVICE_JOYPAD, 0,
++                  btn_map[i].retro) ? btn_map[i].lynx : 0;
++         if (port == 0)
++            select_button = input_state_cb(port, RETRO_DEVICE_JOYPAD, 0,
++                  RETRO_DEVICE_ID_JOYPAD_SELECT);
++      }
++      link_consoles[port].sys->SetButtonData(res);
+    }
+-   lynx->SetButtonData(res);
+ 
+-   if (select_button && !lynx_rotation_button_down)
++   if (link_count == 1)
+    {
+-      lynx_rot++;
+-      lynx_rotation_pending = ROTATION_PENDING_CORE;
++      if (select_button && !lynx_rotation_button_down)
++      {
++         lynx_rot++;
++         lynx_rotation_pending = ROTATION_PENDING_CORE;
++      }
++      lynx_rotation_button_down = select_button;
+    }
+-   lynx_rotation_button_down = select_button;
+ 
+    /* Check whether current frame should be skipped
+     * > Note: if gSkipFrame is already set, then it
+@@ -1077,14 +1339,21 @@ void retro_run(void)
+       retro_refresh_rate_updated = false;
+    }
+ 
+-   gLastRunCycleCount = gSystemCycleCount;
+    frame_available = false;
+ 
+-   while (gSystemCycleCount - gLastRunCycleCount < retro_cycles_per_frame) {
+-      lynx->Update();
++   /* Changed for Rombie (2026-11-18): linked consoles take turns (link_run_frame) */
++   if (link_count > 1)
++      link_run_frame();
++   else
++   {
++      gLastRunCycleCount = gSystemCycleCount;
++
++      while (gSystemCycleCount - gLastRunCycleCount < retro_cycles_per_frame) {
++         lynx->Update();
+ 
+-      for (int lcv = 1; lcv < retro_overclock; lcv++)
+-         lynx->Overclock();
++         for (int lcv = 1; lcv < retro_overclock; lcv++)
++            lynx->Overclock();
++      }
+    }
+ 
+    /* If no end of frame event was produced on this
+@@ -1093,6 +1362,23 @@ void retro_run(void)
+       video_cb(NULL, lynx_width, lynx_height,
+             RETRO_LYNX_WIDTH * RETRO_PIX_BYTES);
+ 
++   /* Changed for Rombie (2026-11-18): every linked console's sound moves on alike (a state holds where it is), and
++    * only the heard one's goes out. */
++   if (link_count > 1)
++   {
++      for (unsigned n = 0; n < link_count; n++)
++      {
++         link_enter(n);
++         link_consoles[n].sys->FetchAudioSamples();
++         link_consoles[n].audio_length = gAudioBufferPointer;
++         gAudioBufferPointer = 0;
++         link_leave(n);
++      }
++      audio_batch_cb((int16_t *)link_consoles[link_audio].audio,
++            link_consoles[link_audio].audio_length >> 1);
++      return;
++   }
++
+    lynx->FetchAudioSamples();
+ 
+    /* Divide gAudioBufferPointer by number of channels */
+@@ -1100,42 +1386,175 @@ void retro_run(void)
+    gAudioBufferPointer = 0;
+ }
+ 
++/* Changed for Rombie (2026-11-18): a state holds every linked console: "HLNK", the number of consoles, link_frame and
++ * the wire (LINK_WIRE_BYTES), then for each its size and its ContextSave with what that leaves out after it (CSystem::LinkContextSave), so a loaded state
++ * runs on exactly as the saved one would. A state for another number of consoles is refused. One console's state is
++ * the solo core's, so a solo state loads with the link off and its state loads in solo play. */
++#define LINK_WIRE_BYTES (4 + LINK_WIRE_MAX * 28)
++#define LINK_HEADER     (12 + LINK_WIRE_BYTES)
++
++static void link_wire_save(UBYTE *out)
++{
++   memcpy(out, &link_wire_count, 4);
++   out += 4;
++   for (uint32_t i = 0; i < LINK_WIRE_MAX; i++, out += 28)
++   {
++      link_wire_frame f = {0, 0, 0, 0, 0};
++      if (i < link_wire_count)
++         f = link_wire[i];
++      memcpy(out, &f.sender, 4);
++      memcpy(out + 4, &f.data, 4);
++      memcpy(out + 8, &f.start, 8);
++      memcpy(out + 16, &f.end, 8);
++      memcpy(out + 24, &f.delivered, 4);
++   }
++}
++
++static bool link_wire_load(const UBYTE *in)
++{
++   uint32_t count;
++   memcpy(&count, in, 4);
++   if (count > LINK_WIRE_MAX)
++      return false;
++   in += 4;
++   for (uint32_t i = 0; i < LINK_WIRE_MAX; i++, in += 28)
++   {
++      memcpy(&link_wire[i].sender, in, 4);
++      memcpy(&link_wire[i].data, in + 4, 4);
++      memcpy(&link_wire[i].start, in + 8, 8);
++      memcpy(&link_wire[i].end, in + 16, 8);
++      memcpy(&link_wire[i].delivered, in + 24, 4);
++   }
++   link_wire_count = count;
++   return true;
++}
++
++static uint32_t link_console_size(unsigned n)
++{
++   LSS_FILE fp;
++
++   fp.memptr      = NULL;
++   fp.index       = 0;
++   fp.index_limit = 0;
++   fp.nul_stream  = 1;
++
++   link_consoles[n].sys->ContextSave(&fp);
++   link_consoles[n].sys->LinkContextSave(&fp);
++   return fp.index;
++}
++
+ size_t retro_serialize_size(void)
+ {
++   size_t size = LINK_HEADER;
++
+    if(!lynx)
+       return 0;
++   if (link_count == 1)
++      return lynx->ContextSize();
+ 
+-   return lynx->ContextSize();
++   for (unsigned n = 0; n < link_count; n++)
++      size += 4 + link_console_size(n);
++   return size;
+ }
+ 
+ bool retro_serialize(void *data, size_t size)
+ {
+-   LSS_FILE fp;
++   UBYTE *out      = (UBYTE *)data;
++   uint32_t count  = link_count;
++   size_t at       = LINK_HEADER;
++   bool status     = true;
+ 
+-   if(!lynx)
++   if(!lynx || size < retro_serialize_size())
+       return false;
++   if (link_count == 1)
++   {
++      LSS_FILE fp;
+ 
+-   fp.memptr      = (UBYTE *)data;
+-   fp.index       = 0;
+-   fp.index_limit = size;
+-   fp.nul_stream  = 0;
++      fp.memptr      = out;
++      fp.index       = 0;
++      fp.index_limit = size;
++      fp.nul_stream  = 0;
++      return lynx->ContextSave(&fp);
++   }
+ 
+-   return lynx->ContextSave(&fp);
++   memcpy(out, LINK_STATE_MAGIC, 4);
++   memcpy(out + 4, &count, 4);
++   memcpy(out + 8, &link_frame, 4);
++   link_wire_save(out + 12);
++   for (unsigned n = 0; n < link_count; n++)
++   {
++      LSS_FILE fp;
++      uint32_t block = link_console_size(n);
++
++      memcpy(out + at, &block, 4);
++      at += 4;
++      fp.memptr      = out + at;
++      fp.index       = 0;
++      fp.index_limit = block;
++      fp.nul_stream  = 0;
++      link_enter(n);
++      if (!link_consoles[n].sys->ContextSave(&fp) || !link_consoles[n].sys->LinkContextSave(&fp))
++         status = false;
++      link_leave(n);
++      at += block;
++   }
++   return status;
+ }
+ 
+ bool retro_unserialize(const void *data, size_t size)
+ {
+-   LSS_FILE fp;
++   const UBYTE *in = (const UBYTE *)data;
++   uint32_t count;
++   size_t at       = LINK_HEADER;
++   bool status     = true;
+ 
+    if(!lynx)
+       return false;
++   if (link_count == 1)
++   {
++      LSS_FILE fp;
+ 
+-   fp.memptr      = (UBYTE *)data;
+-   fp.index       = 0;
+-   fp.index_limit = size;
+-   fp.nul_stream  = 0;
++      fp.memptr      = (UBYTE *)in;
++      fp.index       = 0;
++      fp.index_limit = size;
++      fp.nul_stream  = 0;
++      return lynx->ContextLoad(&fp);
++   }
++   if (size < LINK_HEADER || memcmp(in, LINK_STATE_MAGIC, 4) != 0)
++      return false;
+ 
+-   return lynx->ContextLoad(&fp);
++   memcpy(&count, in + 4, 4);
++   if (count != link_count)
++   {
++      handy_log(RETRO_LOG_ERROR, "The state holds %u consoles, not %u\n", count, link_count);
++      return false;
++   }
++   memcpy(&link_frame, in + 8, 4);
++   if (!link_wire_load(in + 12))
++      return false;
++
++   for (unsigned n = 0; n < link_count; n++)
++   {
++      LSS_FILE fp;
++      uint32_t block;
++
++      if (at + 4 > size)
++         return false;
++      memcpy(&block, in + at, 4);
++      at += 4;
++      if (at + block > size)
++         return false;
++      fp.memptr      = (UBYTE *)in + at;
++      fp.index       = 0;
++      fp.index_limit = block;
++      fp.nul_stream  = 0;
++      link_enter(n);
++      if (!link_consoles[n].sys->ContextLoad(&fp) || !link_consoles[n].sys->LinkContextLoad(&fp))
++         status = false;
++      link_leave(n);
++      at += block;
++   }
++   return status;
+ }
+ 
+ bool retro_load_game(const struct retro_game_info *info)
+@@ -1168,6 +1587,36 @@ bool retro_load_game(const struct retro_game_info *info)
+    bios_file[0]   = '\0';
+    eeprom_file[0] = '\0';
+ 
++   /* Changed for Rombie (2026-11-18): the link's number of consoles and the frames between their power-ons, fixed for
++    * the game, and a buffer for each console but console 1 (framebuffer, below). */
++   {
++      struct retro_variable var = { "handy_link_consoles", NULL };
++      link_count = 1;
++      if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
++      {
++         unsigned n = strtoul(var.value, NULL, 10);
++         if (n >= 1 && n <= LINK_MAX_CONSOLES)
++            link_count = n;
++      }
++      var.key      = "handy_link_stagger";
++      var.value    = NULL;
++      link_stagger = 20;
++      if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
++         link_stagger = strtoul(var.value, NULL, 10);
++      if (link_stagger > 600)
++         link_stagger = 600;
++      link_frame      = 0;
++      link_wire_count = 0;
++      for (unsigned n = 1; n < link_count; n++)
++      {
++         if (!link_consoles[n].framebuffer)
++            link_consoles[n].framebuffer = (uint8_t*)calloc(1,
++                  RETRO_LYNX_WIDTH * RETRO_LYNX_WIDTH * 4 * sizeof(uint8_t));
++         if (!link_consoles[n].framebuffer)
++            return false;
++      }
++   }
++
+    /* Allocate video buffer */
+ #if defined(_3DS)
+    framebuffer = (uint8_t*)linearMemAlign(
+@@ -1178,6 +1627,7 @@ bool retro_load_game(const struct retro_game_info *info)
+ #endif
+    if (!framebuffer)
+       return false;
++   link_consoles[0].framebuffer = framebuffer; /* Changed for Rombie (2026-11-18) */
+ 
+    environ_cb(RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, desc);
+ 
+@@ -1247,17 +1697,42 @@ bool retro_load_game(const struct retro_game_info *info)
+    init_frameskip();
+    lcd_ghosting_init();
+ 
+-   if (lynx)
++   /* Changed for Rombie (2026-11-18): a CSystem for each linked console, each with its own globals, sound buffer and
++    * EEPROM file (console n past 1 adds ".n" to the name), on the cable together. */
++   link_delete_all();
++   for (unsigned n = 0; n < link_count; n++)
++   {
++      char console_eeprom[PATH_MAX_LENGTH + 4];
++      if (n == 0 || string_is_empty(eeprom_file))
++         strlcpy(console_eeprom, eeprom_file, sizeof(console_eeprom));
++      else
++         snprintf(console_eeprom, sizeof(console_eeprom), "%s.%u", eeprom_file, n + 1);
++
++      gAudioBuffer = link_consoles[n].audio;
++      link_consoles[n].sys = new CSystem(content_path, content_data, content_size,
++            bios_file, !bios_found, console_eeprom);
++      gAudioEnabled = true;
++      if (link_count > 1)
++      {
++         link_consoles[n].sys->ComLynxCable(1);
++         link_consoles[n].sys->ComLynxLinkCallback(link_tx, (ULONG)n);
++      }
++      HandyGlobalsSave(&link_consoles[n].globals);
++   }
++   HandyGlobalsLoad(&link_consoles[0].globals);
++   lynx = link_consoles[0].sys;
++
++   /* Changed for Rombie (2026-10-29): with no emulated boot ROM decryption
++    * in this build, a cart needs a valid lynxboot.img. BS93 homebrew loads
++    * into RAM and needs none. */
++   if (!lynx->mRom->mValid && lynx->mFileType != HANDY_FILETYPE_HOMEBREW)
+    {
+-      lynx->SaveEEPROM();
+-      delete lynx;
+-      lynx=0;
++      handy_log(RETRO_LOG_ERROR, "A cart needs a valid %s in this build\n", ROM_FILE);
++      link_delete_all();
++      return false;
+    }
+ 
+-   lynx          = new CSystem(content_path, content_data, content_size,
+-         bios_file, !bios_found, eeprom_file);
+-   gAudioEnabled = true;
+-   soundBuffer   = (int16_t *)&gAudioBuffer;
++   soundBuffer   = (int16_t *)gAudioBuffer;
+    btn_map       = btn_map_no_rot;
+ 
+    /* Apply initial rotation
+@@ -1266,6 +1741,7 @@ bool retro_load_game(const struct retro_game_info *info)
+    lynx_rotate();
+    lynx_width  = lynx_width_next;
+    lynx_height = lynx_height_next;
++   framebuffer = link_consoles[link_screen].framebuffer; /* Changed for Rombie (2026-11-18) */
+ 
+    gSkipFrame        = 0;
+    initialized       = true;
+@@ -1292,16 +1768,28 @@ unsigned retro_get_region(void)
+    return RETRO_REGION_NTSC;
+ }
+ 
++/* Changed for Rombie (2026-11-18): console n's EEPROM is (n << 8) | RETRO_MEMORY_SAVE_RAM, n = 1 to the number of
++ * linked consoles, read and written in place. System RAM is console 1's on every PC. */
++static CEEPROM *link_eeprom(unsigned type)
++{
++   unsigned n = type >> 8;
++   if (!lynx || (type & 0xff) != RETRO_MEMORY_SAVE_RAM || n < 1 || n > link_count)
++      return NULL;
++   return link_consoles[n - 1].sys->mEEPROM->Available() ? link_consoles[n - 1].sys->mEEPROM : NULL;
++}
++
+ void *retro_get_memory_data(unsigned type)
+ {
++   CEEPROM *eeprom = link_eeprom(type);
+    if (lynx && type == RETRO_MEMORY_SYSTEM_RAM)
+       return lynx->GetRamPointer();
+-   return NULL;
++   return eeprom ? eeprom->Data() : NULL;
+ }
+ 
+ size_t retro_get_memory_size(unsigned type)
+ {
++   CEEPROM *eeprom = link_eeprom(type);
+    if (type == RETRO_MEMORY_SYSTEM_RAM)
+       return 1024 * 64;
+-   return 0;
++   return eeprom ? eeprom->Size() : 0;
+ }
+diff --git a/lynx/cart.cpp b/lynx/cart.cpp
+index e1b8f63..c01814a 100644
+--- a/lynx/cart.cpp
++++ b/lynx/cart.cpp
+@@ -61,6 +61,7 @@ CCart::CCart(const UBYTE *gamedata, ULONG gamesize)
+    mWriteEnableBank1=FALSE;
+    mCartRAM=FALSE;
+    mHeaderLess=0;
++   mLastStrobe=0; // Changed for Rombie (2026-11-18)
+    mEEPROMType=0;
+    mCRC32=0;
+    mCRC32=crc32(mCRC32,gamedata,gamesize);
+@@ -431,9 +432,27 @@ inline UBYTE CCart::Peek(ULONG addr)
+ }
+ 
+ 
++// Changed for Rombie (2026-11-18): the last strobe, which ContextSave leaves out.
++bool CCart::LinkContextSave(LSS_FILE *fp)
++{
++   if(!lss_printf(fp,"CCart::LinkContextSave")) return 0;
++   if(!lss_write(&mLastStrobe,sizeof(int),1,fp)) return 0;
++   return 1;
++}
++
++bool CCart::LinkContextLoad(LSS_FILE *fp)
++{
++   char teststr[100]="XXXXXXXXXXXXXXXXXXXXXX";
++   if(!lss_read(teststr,sizeof(char),22,fp)) return 0;
++   if(strcmp(teststr,"CCart::LinkContextSave")!=0) return 0;
++   if(!lss_read(&mLastStrobe,sizeof(int),1,fp)) return 0;
++   return 1;
++}
++
+ void CCart::CartAddressStrobe(bool strobe)
+ {
+-   static int last_strobe=0;
++   // Changed for Rombie (2026-11-18): last_strobe is the member mLastStrobe.
++   int &last_strobe=mLastStrobe;
+ 
+    mStrobe=strobe;
+ 
+diff --git a/lynx/cart.h b/lynx/cart.h
+index 40f2ea4..3e77b6c 100644
+--- a/lynx/cart.h
++++ b/lynx/cart.h
+@@ -124,6 +124,9 @@ class CCart : public CLynxBase
+       bool	ContextSave(LSS_FILE *fp);
+       bool	ContextLoad(LSS_FILE *fp);
+       bool	ContextLoadLegacy(LSS_FILE *fp);
++      // Changed for Rombie (2026-11-18): what ContextSave leaves out and a linked console needs back exactly.
++      bool	LinkContextSave(LSS_FILE *fp);
++      bool	LinkContextLoad(LSS_FILE *fp);
+ 
+       void	Poke(ULONG addr,UBYTE data);
+       UBYTE	Peek(ULONG addr);
+@@ -184,6 +187,8 @@ class CCart : public CLynxBase
+       ULONG	mShifter;
+       ULONG	mAddrData;
+       ULONG	mStrobe;
++      // Changed for Rombie (2026-11-18): CartAddressStrobe's last strobe, each linked console's own (a static before).
++      int	mLastStrobe;
+ 
+       ULONG	mShiftCount0;
+       ULONG	mCountMask0;
+diff --git a/lynx/eeprom.h b/lynx/eeprom.h
+index 8966e51..423dcee 100644
+--- a/lynx/eeprom.h
++++ b/lynx/eeprom.h
+@@ -49,6 +49,8 @@ public:
+    void SetEEPROMType(UBYTE b);
+    int Size(void);
+    void InitFrom(char *data,int count){ memcpy(romdata,data,__min(count,Size()));};
++   // Changed for Rombie (2026-11-18): the contents, for a linked console's EEPROM as libretro memory.
++   UWORD *Data(void){ return romdata; };
+ 
+    void Poke(ULONG addr,UBYTE data) { };
+    UBYTE Peek(ULONG addr)
+diff --git a/lynx/mikie.cpp b/lynx/mikie.cpp
+index 5248bde..222fc47 100644
+--- a/lynx/mikie.cpp
++++ b/lynx/mikie.cpp
+@@ -81,6 +81,11 @@ void CMikie::BlowOut(void)
+ 
+    mUART_CABLE_PRESENT=FALSE;
+    mpUART_TX_CALLBACK=NULL;
++   // Changed for Rombie (2026-11-18)
++   mpUART_LINK_CALLBACK=NULL;
++   mUART_LINK_CALLBACK_OBJECT=0;
++   mLastLSample=0;
++   mLastRSample=0;
+ 
+    int loop;
+    for(loop=0;loop<16;loop++) mPalette[loop].Index=loop;
+@@ -314,6 +319,7 @@ void CMikie::Reset(void)
+    mUART_Rx_waiting=0;
+    mUART_Rx_framing_error=0;
+    mUART_Rx_overun_error=0;
++   mUART_Rx_parity_error=0;
+ 
+    mUART_SENDBREAK=0;
+    mUART_TX_DATA=0;
+@@ -814,6 +820,7 @@ void CMikie::ComLynxTxLoopback(int data)
+       mUART_Rx_input_queue[mUART_Rx_output_ptr]=data;
+       mUART_Rx_waiting++;
+    }
++
+ }
+ 
+ void CMikie::ComLynxTxCallback(void (*function)(int data,ULONG objref),ULONG objref)
+@@ -822,6 +829,96 @@ void CMikie::ComLynxTxCallback(void (*function)(int data,ULONG objref),ULONG obj
+    mUART_TX_CALLBACK_OBJECT=objref;
+ }
+ 
++// Changed for Rombie (2026-11-18): on the link, the wire (libretro.cpp) carries what this console sends, a frame of
++// nine bits from the SERDAT write to the end of its countdown (data -1, LINK_WIRE_END), and brings back each frame
++// as it ends, merged with any that overlapped it (ComLynxLinkRx), to every console, this one too: its echo. The
++// queue and the loopback are left to a console alone.
++void CMikie::ComLynxLinkCallback(void (*function)(int data,ULONG objref),ULONG objref)
++{
++   mpUART_LINK_CALLBACK=function;
++   mUART_LINK_CALLBACK_OBJECT=objref;
++}
++
++static int ParityOdd(int data)
++{
++   data&=0xff;
++   data^=data>>4;
++   data^=data>>2;
++   data^=data>>1;
++   return data&1;
++}
++
++// Changed for Rombie (2026-11-18): the ninth bit sent, as Mikey sends it: the parity bit, or PAREVEN with parity off.
++static int NinthBit(int data,ULONG parity_enable,ULONG parity_even)
++{
++   if(parity_enable) return parity_even ? ParityOdd(data) : !ParityOdd(data);
++   return parity_even ? 1 : 0;
++}
++
++// Changed for Rombie (2026-11-18): a frame off the wire, into the one receive register: a byte still unread is
++// overrun, a collision of frames that started apart (0x10000) a framing error, and with parity on a wrong ninth bit a
++// parity error (all until RESETERR).
++void CMikie::ComLynxLinkRx(int data)
++{
++   if(data&0x10000) mUART_Rx_framing_error=1;
++   data&=0xffff;
++   if(mUART_RX_READY) mUART_Rx_overun_error=1;
++   mUART_RX_DATA=data;
++   mUART_RX_READY=1;
++   if(mUART_PARITY_ENABLE && !(data&UART_BREAK_CODE) && ((data>>8)&1)!=NinthBit(data,1,mUART_PARITY_EVEN))
++      mUART_Rx_parity_error=1;
++}
++
++// Changed for Rombie (2026-11-18): what ContextSave leaves out and a linked console needs back exactly after a load:
++// the bytes waiting in the receive queue, the display DMA's place in the frame, the sound's pan and attenuation, and
++// UpdateSound's last samples.
++bool CMikie::LinkContextSave(LSS_FILE *fp)
++{
++   if(!lss_printf(fp,"CMikie::LinkContextSave")) return 0;
++   if(!lss_write(mUART_Rx_input_queue,sizeof(int),UART_MAX_RX_QUEUE,fp)) return 0;
++   if(!lss_write(&mUART_Rx_input_ptr,sizeof(unsigned int),1,fp)) return 0;
++   if(!lss_write(&mUART_Rx_output_ptr,sizeof(unsigned int),1,fp)) return 0;
++   if(!lss_write(&mUART_Rx_waiting,sizeof(int),1,fp)) return 0;
++   if(!lss_write(&mUART_Rx_framing_error,sizeof(int),1,fp)) return 0;
++   if(!lss_write(&mUART_Rx_overun_error,sizeof(int),1,fp)) return 0;
++   if(!lss_write(&mUART_Rx_parity_error,sizeof(int),1,fp)) return 0;
++   if(!lss_write(&mLynxLine,sizeof(ULONG),1,fp)) return 0;
++   if(!lss_write(&mLynxLineDMACounter,sizeof(ULONG),1,fp)) return 0;
++   if(!lss_write(&mLynxAddr,sizeof(ULONG),1,fp)) return 0;
++   int32_t display=mpDisplayCurrent ? (int32_t)(mpDisplayCurrent-mpDisplayBits) : -1;
++   if(!lss_write(&display,sizeof(int32_t),1,fp)) return 0;
++   if(!lss_write(mAUDIO_ATTEN,sizeof(UBYTE),4,fp)) return 0;
++   if(!lss_write(&mPAN,sizeof(ULONG),1,fp)) return 0;
++   if(!lss_write(&mLastLSample,sizeof(int),1,fp)) return 0;
++   if(!lss_write(&mLastRSample,sizeof(int),1,fp)) return 0;
++   return 1;
++}
++
++bool CMikie::LinkContextLoad(LSS_FILE *fp)
++{
++   char teststr[100]="XXXXXXXXXXXXXXXXXXXXXXX";
++   if(!lss_read(teststr,sizeof(char),23,fp)) return 0;
++   if(strcmp(teststr,"CMikie::LinkContextSave")!=0) return 0;
++   if(!lss_read(mUART_Rx_input_queue,sizeof(int),UART_MAX_RX_QUEUE,fp)) return 0;
++   if(!lss_read(&mUART_Rx_input_ptr,sizeof(unsigned int),1,fp)) return 0;
++   if(!lss_read(&mUART_Rx_output_ptr,sizeof(unsigned int),1,fp)) return 0;
++   if(!lss_read(&mUART_Rx_waiting,sizeof(int),1,fp)) return 0;
++   if(!lss_read(&mUART_Rx_framing_error,sizeof(int),1,fp)) return 0;
++   if(!lss_read(&mUART_Rx_overun_error,sizeof(int),1,fp)) return 0;
++   if(!lss_read(&mUART_Rx_parity_error,sizeof(int),1,fp)) return 0;
++   if(!lss_read(&mLynxLine,sizeof(ULONG),1,fp)) return 0;
++   if(!lss_read(&mLynxLineDMACounter,sizeof(ULONG),1,fp)) return 0;
++   if(!lss_read(&mLynxAddr,sizeof(ULONG),1,fp)) return 0;
++   int32_t display;
++   if(!lss_read(&display,sizeof(int32_t),1,fp)) return 0;
++   mpDisplayCurrent=(display<0 || !mpDisplayBits) ? NULL : mpDisplayBits+display;
++   if(!lss_read(mAUDIO_ATTEN,sizeof(UBYTE),4,fp)) return 0;
++   if(!lss_read(&mPAN,sizeof(ULONG),1,fp)) return 0;
++   if(!lss_read(&mLastLSample,sizeof(int),1,fp)) return 0;
++   if(!lss_read(&mLastRSample,sizeof(int),1,fp)) return 0;
++   return 1;
++}
++
+ 
+ void CMikie::DisplaySetAttributes(ULONG Rotate,ULONG Format,ULONG Pitch,UBYTE* (*RenderCallback)(ULONG objref),ULONG objref)
+ {
+@@ -1585,6 +1682,13 @@ void CMikie::Poke(ULONG addr,UBYTE data)
+          break;
+ 
+       case (TIM0CTLB&0xff):
++         // Changed for Rombie (2026-11-18): on the link, a one-shot timer that had stopped, done, counts from now when
++         // started again, as Mikey's does; Handy counted the time it had stood still at once and fired at the next
++         // update, which cut Epyx's RedEye receive timeout (timer 1, restarted at each byte) short after one byte.
++         if(mpUART_LINK_CALLBACK && mTIM_0_TIMER_DONE && !mTIM_0_ENABLE_RELOAD && !(data&0x08)) {
++            mTIM_0_LAST_COUNT=gSystemCycleCount;
++            gNextTimerEvent=gSystemCycleCount;
++         }
+          mTIM_0_TIMER_DONE=data&0x08;
+          mTIM_0_LAST_CLOCK=data&0x04;
+          mTIM_0_BORROW_IN=data&0x02;
+@@ -1592,6 +1696,11 @@ void CMikie::Poke(ULONG addr,UBYTE data)
+          //			BlowOut();
+          break;
+       case (TIM1CTLB&0xff):
++         // Changed for Rombie (2026-11-18): as timer 0
++         if(mpUART_LINK_CALLBACK && mTIM_1_TIMER_DONE && !mTIM_1_ENABLE_RELOAD && !(data&0x08)) {
++            mTIM_1_LAST_COUNT=gSystemCycleCount;
++            gNextTimerEvent=gSystemCycleCount;
++         }
+          mTIM_1_TIMER_DONE=data&0x08;
+          mTIM_1_LAST_CLOCK=data&0x04;
+          mTIM_1_BORROW_IN=data&0x02;
+@@ -1599,6 +1708,11 @@ void CMikie::Poke(ULONG addr,UBYTE data)
+          //			BlowOut();
+          break;
+       case (TIM2CTLB&0xff):
++         // Changed for Rombie (2026-11-18): as timer 0
++         if(mpUART_LINK_CALLBACK && mTIM_2_TIMER_DONE && !mTIM_2_ENABLE_RELOAD && !(data&0x08)) {
++            mTIM_2_LAST_COUNT=gSystemCycleCount;
++            gNextTimerEvent=gSystemCycleCount;
++         }
+          mTIM_2_TIMER_DONE=data&0x08;
+          mTIM_2_LAST_CLOCK=data&0x04;
+          mTIM_2_BORROW_IN=data&0x02;
+@@ -1606,6 +1720,11 @@ void CMikie::Poke(ULONG addr,UBYTE data)
+          //			BlowOut();
+          break;
+       case (TIM3CTLB&0xff):
++         // Changed for Rombie (2026-11-18): as timer 0
++         if(mpUART_LINK_CALLBACK && mTIM_3_TIMER_DONE && !mTIM_3_ENABLE_RELOAD && !(data&0x08)) {
++            mTIM_3_LAST_COUNT=gSystemCycleCount;
++            gNextTimerEvent=gSystemCycleCount;
++         }
+          mTIM_3_TIMER_DONE=data&0x08;
+          mTIM_3_LAST_CLOCK=data&0x04;
+          mTIM_3_BORROW_IN=data&0x02;
+@@ -1613,6 +1732,11 @@ void CMikie::Poke(ULONG addr,UBYTE data)
+          //			BlowOut();
+          break;
+       case (TIM4CTLB&0xff):
++         // Changed for Rombie (2026-11-18): as timer 0
++         if(mpUART_LINK_CALLBACK && mTIM_4_TIMER_DONE && !mTIM_4_ENABLE_RELOAD && !(data&0x08)) {
++            mTIM_4_LAST_COUNT=gSystemCycleCount;
++            gNextTimerEvent=gSystemCycleCount;
++         }
+          mTIM_4_TIMER_DONE=data&0x08;
+          mTIM_4_LAST_CLOCK=data&0x04;
+          mTIM_4_BORROW_IN=data&0x02;
+@@ -1620,6 +1744,11 @@ void CMikie::Poke(ULONG addr,UBYTE data)
+          //			BlowOut();
+          break;
+       case (TIM5CTLB&0xff):
++         // Changed for Rombie (2026-11-18): as timer 0
++         if(mpUART_LINK_CALLBACK && mTIM_5_TIMER_DONE && !mTIM_5_ENABLE_RELOAD && !(data&0x08)) {
++            mTIM_5_LAST_COUNT=gSystemCycleCount;
++            gNextTimerEvent=gSystemCycleCount;
++         }
+          mTIM_5_TIMER_DONE=data&0x08;
+          mTIM_5_LAST_CLOCK=data&0x04;
+          mTIM_5_BORROW_IN=data&0x02;
+@@ -1627,6 +1756,11 @@ void CMikie::Poke(ULONG addr,UBYTE data)
+          //			BlowOut();
+          break;
+       case (TIM6CTLB&0xff):
++         // Changed for Rombie (2026-11-18): as timer 0
++         if(mpUART_LINK_CALLBACK && mTIM_6_TIMER_DONE && !mTIM_6_ENABLE_RELOAD && !(data&0x08)) {
++            mTIM_6_LAST_COUNT=gSystemCycleCount;
++            gNextTimerEvent=gSystemCycleCount;
++         }
+          mTIM_6_TIMER_DONE=data&0x08;
+          mTIM_6_LAST_CLOCK=data&0x04;
+          mTIM_6_BORROW_IN=data&0x02;
+@@ -1634,6 +1768,11 @@ void CMikie::Poke(ULONG addr,UBYTE data)
+          //			BlowOut();
+          break;
+       case (TIM7CTLB&0xff):
++         // Changed for Rombie (2026-11-18): as timer 0
++         if(mpUART_LINK_CALLBACK && mTIM_7_TIMER_DONE && !mTIM_7_ENABLE_RELOAD && !(data&0x08)) {
++            mTIM_7_LAST_COUNT=gSystemCycleCount;
++            gNextTimerEvent=gSystemCycleCount;
++         }
+          mTIM_7_TIMER_DONE=data&0x08;
+          mTIM_7_LAST_CLOCK=data&0x04;
+          mTIM_7_BORROW_IN=data&0x02;
+@@ -1931,13 +2070,16 @@ void CMikie::Poke(ULONG addr,UBYTE data)
+          if(data&0x08) {
+             mUART_Rx_overun_error=0;
+             mUART_Rx_framing_error=0;
++            mUART_Rx_parity_error=0;
+          }
+ 
+          if(mUART_SENDBREAK) {
+             // Trigger send break, it will self sustain as long as sendbreak is set
+             mUART_TX_COUNTDOWN=UART_TX_TIME_PERIOD;
+             // Loop back what we transmitted
+-            ComLynxTxLoopback(UART_BREAK_CODE);
++            // Changed for Rombie (2026-11-18): on the link, onto the wire instead
++            if(mpUART_LINK_CALLBACK) (*mpUART_LINK_CALLBACK)(UART_BREAK_CODE,mUART_LINK_CALLBACK_OBJECT);
++            else ComLynxTxLoopback(UART_BREAK_CODE);
+          }
+          break;
+ 
+@@ -1960,7 +2102,11 @@ void CMikie::Poke(ULONG addr,UBYTE data)
+          // Set countdown to transmission
+          mUART_TX_COUNTDOWN=UART_TX_TIME_PERIOD;
+          // Loop back what we transmitted
+-         ComLynxTxLoopback(mUART_TX_DATA);
++         // Changed for Rombie (2026-11-18): on the link, onto the wire instead, with its ninth bit
++         if(mpUART_LINK_CALLBACK)
++            (*mpUART_LINK_CALLBACK)(mUART_TX_DATA|(NinthBit(mUART_TX_DATA,mUART_PARITY_ENABLE,mUART_PARITY_EVEN)<<8),mUART_LINK_CALLBACK_OBJECT);
++         else
++            ComLynxTxLoopback(mUART_TX_DATA);
+          break;
+ 
+       case (SDONEACK&0xff):
+@@ -2412,6 +2558,7 @@ UBYTE CMikie::Peek(ULONG addr)
+          retval|=(mUART_RX_READY)?0x40:0x00;							// Indicate Rx data ready
+          retval|=(mUART_Rx_overun_error)?0x08:0x0;					// Framing error
+          retval|=(mUART_Rx_framing_error)?0x04:0x00;					// Rx overrun
++         retval|=(mUART_Rx_parity_error)?0x10:0x00;					// Changed for Rombie (2026-11-18): parity error, on the link
+          retval|=(mUART_RX_DATA&UART_BREAK_CODE)?0x02:0x00;			// Indicate break received
+          retval|=(mUART_RX_DATA&0x0100)?0x01:0x00;					// Add parity bit
+          return (UBYTE)retval;
+@@ -2821,12 +2968,15 @@ inline void CMikie::Update(void)
+             }
+ 
+             if(!mUART_TX_COUNTDOWN) {
++               // Changed for Rombie (2026-11-18): on the link, the frame ends here
++               if(mpUART_LINK_CALLBACK) (*mpUART_LINK_CALLBACK)(-1,mUART_LINK_CALLBACK_OBJECT);
+                if(mUART_SENDBREAK) {
+                   mUART_TX_DATA=UART_BREAK_CODE;
+                   // Auto-Respawn new transmit
+                   mUART_TX_COUNTDOWN=UART_TX_TIME_PERIOD;
+                   // Loop back what we transmitted
+-                  ComLynxTxLoopback(mUART_TX_DATA);
++                  if(mpUART_LINK_CALLBACK) (*mpUART_LINK_CALLBACK)(UART_BREAK_CODE,mUART_LINK_CALLBACK_OBJECT);
++                  else ComLynxTxLoopback(mUART_TX_DATA);
+                } else {
+                   // Serial activity finished
+                   mUART_TX_COUNTDOWN=UART_TX_INACTIVE;
+@@ -3575,16 +3725,14 @@ inline void CMikie::UpdateSound(void)
+       }
+    }
+ 
+-   static int last_lsample = 0;
+-   static int last_rsample = 0;
+-
+-   if(cur_lsample != last_lsample) {
+-      miksynth.offset_inline((gSystemCycleCount - gAudioLastUpdateCycle) / 4, cur_lsample - last_lsample, mikbuf.left());
+-      last_lsample = cur_lsample;
++   // Changed for Rombie (2026-11-18): the last samples are members, each linked console's own (statics before).
++   if(cur_lsample != mLastLSample) {
++      miksynth.offset_inline((gSystemCycleCount - gAudioLastUpdateCycle) / 4, cur_lsample - mLastLSample, mikbuf.left());
++      mLastLSample = cur_lsample;
+    }
+ 
+-   if(cur_rsample != last_rsample) {
+-      miksynth.offset_inline((gSystemCycleCount - gAudioLastUpdateCycle) / 4, cur_rsample - last_rsample, mikbuf.right());
+-      last_rsample = cur_rsample;
++   if(cur_rsample != mLastRSample) {
++      miksynth.offset_inline((gSystemCycleCount - gAudioLastUpdateCycle) / 4, cur_rsample - mLastRSample, mikbuf.right());
++      mLastRSample = cur_rsample;
+    }
+ }
+diff --git a/lynx/mikie.h b/lynx/mikie.h
+index cabeae6..f1bf180 100644
+--- a/lynx/mikie.h
++++ b/lynx/mikie.h
+@@ -192,6 +192,12 @@ class CMikie : public CLynxBase
+       void	ComLynxRxData(int data);
+       void	ComLynxTxLoopback(int data);
+       void	ComLynxTxCallback(void (*function)(int data,ULONG objref),ULONG objref);
++      // Changed for Rombie (2026-11-18): every byte this console puts on the cable, as it loops back, goes to the
++      // linked consoles too; and what ContextSave leaves out, which they need back exactly.
++      void	ComLynxLinkCallback(void (*function)(int data,ULONG objref),ULONG objref);
++      void	ComLynxLinkRx(int data);
++      bool	LinkContextSave(LSS_FILE *fp);
++      bool	LinkContextLoad(LSS_FILE *fp);
+ 
+       void	DisplaySetAttributes(ULONG Rotate, ULONG Format, ULONG Pitch, UBYTE* (*DisplayCallback)(ULONG objref),ULONG objref);
+ 
+@@ -413,6 +419,11 @@ class CMikie : public CLynxBase
+       int			mUART_CABLE_PRESENT;
+       void		(*mpUART_TX_CALLBACK)(int data,ULONG objref);
+       ULONG		mUART_TX_CALLBACK_OBJECT;
++      // Changed for Rombie (2026-11-18): the link's cable, and UpdateSound's last samples (statics before).
++      void		(*mpUART_LINK_CALLBACK)(int data,ULONG objref);
++      ULONG		mUART_LINK_CALLBACK_OBJECT;
++      int			mLastLSample;
++      int			mLastRSample;
+ 
+       int			mUART_Rx_input_queue[UART_MAX_RX_QUEUE];
+       unsigned int mUART_Rx_input_ptr;
+@@ -420,6 +431,8 @@ class CMikie : public CLynxBase
+       int			mUART_Rx_waiting;
+       int			mUART_Rx_framing_error;
+       int			mUART_Rx_overun_error;
++      // Changed for Rombie (2026-11-18): a parity error on the link (Handy reports none alone)
++      int			mUART_Rx_parity_error;
+ 
+       //
+       // Screen related
+diff --git a/lynx/susie.cpp b/lynx/susie.cpp
+index b868e2a..cba1511 100644
+--- a/lynx/susie.cpp
++++ b/lynx/susie.cpp
+@@ -71,9 +71,37 @@ ULONG cycles_used=0;
+ CSusie::CSusie(CSystem& parent)
+    :mSystem(parent)
+ {
++   // Changed for Rombie (2026-11-18)
++   mVQuadOff=0;
++   mHQuadOff=0;
+    Reset();
+ }
+ 
++// Changed for Rombie (2026-11-18): the quad offsets and the math unit's signs, which ContextSave leaves out.
++bool CSusie::LinkContextSave(LSS_FILE *fp)
++{
++   if(!lss_printf(fp,"CSusie::LinkContextSave")) return 0;
++   if(!lss_write(&mVQuadOff,sizeof(int),1,fp)) return 0;
++   if(!lss_write(&mHQuadOff,sizeof(int),1,fp)) return 0;
++   if(!lss_write(&mMATHAB_sign,sizeof(int),1,fp)) return 0;
++   if(!lss_write(&mMATHCD_sign,sizeof(int),1,fp)) return 0;
++   if(!lss_write(&mMATHEFGH_sign,sizeof(int),1,fp)) return 0;
++   return 1;
++}
++
++bool CSusie::LinkContextLoad(LSS_FILE *fp)
++{
++   char teststr[100]="XXXXXXXXXXXXXXXXXXXXXXX";
++   if(!lss_read(teststr,sizeof(char),23,fp)) return 0;
++   if(strcmp(teststr,"CSusie::LinkContextSave")!=0) return 0;
++   if(!lss_read(&mVQuadOff,sizeof(int),1,fp)) return 0;
++   if(!lss_read(&mHQuadOff,sizeof(int),1,fp)) return 0;
++   if(!lss_read(&mMATHAB_sign,sizeof(int),1,fp)) return 0;
++   if(!lss_read(&mMATHCD_sign,sizeof(int),1,fp)) return 0;
++   if(!lss_read(&mMATHEFGH_sign,sizeof(int),1,fp)) return 0;
++   return 1;
++}
++
+ CSusie::~CSusie()
+ {
+ }
+@@ -690,8 +718,10 @@ ULONG CSusie::PaintSprites(void)
+             static int hoff=0,voff=0;
+             static int hloop=0,vloop=0;
+             static bool onscreen=0;
+-            static int vquadoff=0;
+-            static int hquadoff=0;
++            // Changed for Rombie (2026-11-18): vquadoff and hquadoff are members now (mVQuadOff, mHQuadOff); the
++            // statics above are each set before they are read in a call.
++            int &vquadoff=mVQuadOff;
++            int &hquadoff=mHQuadOff;
+ 
+             if(render)
+             {
+diff --git a/lynx/susie.h b/lynx/susie.h
+index 7592a52..526dcb4 100644
+--- a/lynx/susie.h
++++ b/lynx/susie.h
+@@ -335,7 +335,16 @@ class CSusie : public CLynxBase
+ 
+       ULONG	PaintSprites(void);
+ 
++      // Changed for Rombie (2026-11-18): what ContextSave leaves out and a linked console needs back exactly.
++      bool	LinkContextSave(LSS_FILE *fp);
++      bool	LinkContextLoad(LSS_FILE *fp);
++
+    private:
++      // Changed for Rombie (2026-11-18): PaintSprites' quad offsets, which carry from one sprite to the next, are
++      // each linked console's own (statics before).
++      int			mVQuadOff;
++      int			mHQuadOff;
++
+       void	DoMathDivide(void);
+       void	DoMathMultiply(void);
+       ULONG	LineInit(ULONG voff);
+diff --git a/lynx/system.cpp b/lynx/system.cpp
+index 522c990..c1b14cb 100644
+--- a/lynx/system.cpp
++++ b/lynx/system.cpp
+@@ -61,8 +61,6 @@
+ #include "system.h"
+ #include "handy.h"
+ 
+-extern void lynx_decrypt(unsigned char * result, const unsigned char * encrypted, const int length);
+-
+ int lss_read(void* dest, int varsize, int varcount, LSS_FILE *fp)
+ {
+    ULONG copysize=varsize*varcount;
+@@ -326,32 +324,8 @@ void CSystem::HLE_BIOS_FE19(void)
+ 
+ void CSystem::HLE_BIOS_FE4A(void)
+ {
+-   UWORD addr=mRam->Peek(0x0005) | (mRam->Peek(0x0006)<<8);
+-
+-   // Load from Cart (loader blocks)
+-   unsigned char buff[256];// maximum 5 blocks
+-   unsigned char res[256];
+-
+-   buff[0]=mCart->Peek0();
+-   int blockcount = 0x100 -  buff[0];
+-
+-   for (int i = 1; i < 1+51*blockcount; ++i) { // first encrypted loader
+-      buff[i] = mCart->Peek0();
+-   }
+-
+-   lynx_decrypt(res, buff, 51);
+-
+-   for (int i = 0; i < 50*blockcount; ++i) {
+-      Poke_CPU(addr++, res[i]);
+-   }
+-
+-   // Load Block(s), decode to ($05,$06)
+-   // jmp $200
+-
+-   C6502_REGS regs;
+-   mCpu->GetRegs(regs);
+-   regs.PC=0x0200;
+-   mCpu->SetRegs(regs);
++   // Changed for Rombie (2026-10-29): this build leaves out the loader decryption (lynxdec.cpp, which states no
++   // license), so it boots a cart only with the player's lynxboot.img; retro_load_game refuses one without it.
+ }
+ 
+ void CSystem::HLE_BIOS_FF80(void)
+@@ -565,3 +539,43 @@ bool CSystem::ContextLoad(LSS_FILE *fp)
+ 
+    return status;
+ }
++
++// Changed for Rombie (2026-11-18): linked consoles each keep their own copy of the globals (system.h).
++#define HANDY_GLOBALS(X) X(SystemCycleCount) X(LastRunCycleCount) X(NextTimerEvent) X(CPUWakeupTime) \
++   X(IRQEntryCycle) X(CPUBootAddress) X(BreakpointHit) X(SingleStepMode) X(SingleStepModeSprites) X(SystemIRQ) \
++   X(SystemNMI) X(SystemCPUSleep) X(SystemCPUSleep_Saved) X(SystemHalt) X(ThrottleMaxPercentage) \
++   X(ThrottleLastTimerCount) X(ThrottleNextCycleCheckpoint) X(TimerCount) X(AudioEnabled) X(AudioBufferPointer) \
++   X(AudioLastUpdateCycle) X(AudioBuffer) X(SkipFrame)
++
++void HandyGlobalsSave(HandyGlobals *g)
++{
++#define HANDY_GLOBAL_SAVE(name) g->name=g##name;
++   HANDY_GLOBALS(HANDY_GLOBAL_SAVE)
++#undef HANDY_GLOBAL_SAVE
++}
++
++void HandyGlobalsLoad(const HandyGlobals *g)
++{
++#define HANDY_GLOBAL_LOAD(name) g##name=g->name;
++   HANDY_GLOBALS(HANDY_GLOBAL_LOAD)
++#undef HANDY_GLOBAL_LOAD
++}
++
++// Changed for Rombie (2026-11-18): what ContextSave leaves out and a linked console needs back exactly, after
++// ContextSave's own bytes: the cart's last strobe, Susie's quad offsets and math signs, and Mikie's receive queue,
++// display DMA and sound.
++bool CSystem::LinkContextSave(LSS_FILE *fp)
++{
++   if(!mCart->LinkContextSave(fp)) return 0;
++   if(!mSusie->LinkContextSave(fp)) return 0;
++   if(!mMikie->LinkContextSave(fp)) return 0;
++   return 1;
++}
++
++bool CSystem::LinkContextLoad(LSS_FILE *fp)
++{
++   if(!mCart->LinkContextLoad(fp)) return 0;
++   if(!mSusie->LinkContextLoad(fp)) return 0;
++   if(!mMikie->LinkContextLoad(fp)) return 0;
++   return 1;
++}
+diff --git a/lynx/system.h b/lynx/system.h
+index 79c6735..0fc9af6 100644
+--- a/lynx/system.h
++++ b/lynx/system.h
+@@ -95,7 +95,9 @@ ULONG   gThrottleNextCycleCheckpoint=0;
+ volatile ULONG gTimerCount=0;
+ 
+ ULONG   gAudioEnabled=FALSE;
+-UBYTE   gAudioBuffer[HANDY_AUDIO_BUFFER_SIZE];
++// Changed for Rombie (2026-11-18): a pointer, so each linked console's samples go to its own buffer.
++UBYTE   gAudioBufferSolo[HANDY_AUDIO_BUFFER_SIZE];
++UBYTE   *gAudioBuffer=gAudioBufferSolo;
+ ULONG   gAudioBufferPointer=0;
+ ULONG   gAudioLastUpdateCycle=0;
+ 
+@@ -125,7 +127,7 @@ extern ULONG    gThrottleNextCycleCheckpoint;
+ extern volatile ULONG gTimerCount;
+ 
+ extern ULONG    gAudioEnabled;
+-extern UBYTE    gAudioBuffer[HANDY_AUDIO_BUFFER_SIZE];
++extern UBYTE    *gAudioBuffer;
+ extern ULONG    gAudioBufferPointer;
+ extern ULONG    gAudioLastUpdateCycle;
+ 
+@@ -134,6 +136,20 @@ extern UBYTE    gSkipFrame;
+ extern CErrorInterface *gError;
+ #endif
+ 
++// Changed for Rombie (2026-11-18): the globals above hold one Lynx. Linked consoles each keep their own copy here,
++// put in place (HandyGlobalsLoad) before the console runs and taken back (HandyGlobalsSave) after.
++struct HandyGlobals
++{
++   ULONG SystemCycleCount, LastRunCycleCount, NextTimerEvent, CPUWakeupTime, IRQEntryCycle, CPUBootAddress;
++   ULONG BreakpointHit, SingleStepMode, SingleStepModeSprites, SystemIRQ, SystemNMI, SystemCPUSleep;
++   ULONG SystemCPUSleep_Saved, SystemHalt, ThrottleMaxPercentage, ThrottleLastTimerCount, ThrottleNextCycleCheckpoint;
++   ULONG TimerCount, AudioEnabled, AudioBufferPointer, AudioLastUpdateCycle;
++   UBYTE *AudioBuffer;
++   UBYTE SkipFrame;
++};
++void HandyGlobalsSave(HandyGlobals *g);
++void HandyGlobalsLoad(const HandyGlobals *g);
++
+ typedef struct lssfile
+ {
+    UBYTE *memptr;
+@@ -292,6 +308,12 @@ class CSystem : public CSystemBase
+       void   ComLynxCable(int status) { mMikie->ComLynxCable(status); };
+       void   ComLynxRxData(int data)  { mMikie->ComLynxRxData(data); };
+       void   ComLynxTxCallback(void (*function)(int data,ULONG objref),ULONG objref) { mMikie->ComLynxTxCallback(function,objref); };
++      // Changed for Rombie (2026-11-18): the ComLynx cable between linked consoles, and what a state leaves out that
++      // they need back exactly (system.cpp).
++      void   ComLynxLinkCallback(void (*function)(int data,ULONG objref),ULONG objref) { mMikie->ComLynxLinkCallback(function,objref); };
++      void   ComLynxLinkRx(int data) { mMikie->ComLynxLinkRx(data); };
++      bool   LinkContextSave(LSS_FILE *fp);
++      bool   LinkContextLoad(LSS_FILE *fp);
+ 
+       // Suzy system interfacing
+ 

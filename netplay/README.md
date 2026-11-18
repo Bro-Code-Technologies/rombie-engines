@@ -35,6 +35,8 @@ Single-threaded, so no `SharedArrayBuffer` and no cross-origin isolation.
 | `patches/stella.patch` | Stella's changes, the same file as `stella/patches/` (see The cores) |
 | `prosystem-libretro/` | The Atari 7800 core, a submodule pinned to its commit |
 | `patches/prosystem.patch` | ProSystem's changes so a loaded state runs on exactly as the saved one would (see The cores), kept with CRLF where ProSystem's files have it |
+| `libretro-handy/` | The Atari Lynx core, a submodule pinned to its commit |
+| `patches/handy.patch` | Handy's changes: the boot ROM change of `handy/patches/`, and the ComLynx link, up to eight Lynxes in the one core (see The cores) |
 
 ### Messages
 
@@ -62,7 +64,9 @@ order; the engine posts `{ type: 'ready' }` when it is up.
 Buffers in replies are transferred, not copied.
 
 **Save RAM.** `memory` is a libretro memory id, `RETRO_MEMORY_SAVE_RAM` (0) when absent. Gearsystem with its link on
-runs two consoles, whose save RAM are `0x100` and `0x200` (0 is the first console's too); every other core has the one.
+runs two consoles, whose save RAM are `0x100` and `0x200` (0 is the first console's too). Handy keeps a cart's EEPROM
+apart from save RAM, as `0x100` for the first console up to `0x800` for the eighth, with or without the link, and
+nothing at 0. Every other core has the one.
 
 **Save files.** ClownMDEmu keeps a Sega CD game's backup RAM as files in the core's save folder (`/save`, one `.brm`
 per entry the BIOS's backup calls make), not as save RAM, and they are not part of a saved state. `filesGet` and
@@ -100,7 +104,9 @@ state, which comes back exactly after a rollback (see Testing), while `memoryHas
 Stella exposes only the RIOT's 128 bytes of RAM, and its whole state differs for a frame or two after each rollback
 in parts the game never sees (see The cores), so Rombie compares game memory and pictures for the 2600. ProSystem's
 whole state comes back exactly after a rollback with Rombie's patch, while its picture can keep a frame the rollback
-undid (see The cores), so Rombie compares the whole state for the 7800 and not the picture.
+undid (see The cores), so Rombie compares the whole state for the 7800 and not the picture. Handy's whole state, every
+linked console and the cable between them, comes back exactly after a rollback, while `memoryHashes` covers the first
+console only and each PC draws its own console, so Rombie compares the whole state for the Lynx.
 
 ## The cores
 
@@ -113,6 +119,7 @@ undid (see The cores), so Rombie compares the whole state for the 7800 and not t
 | ClownMDEmu (Genesis and Sega CD) | `clownmdemu-libretro`: [Clownacy/clownmdemu-libretro](https://github.com/Clownacy/clownmdemu-libretro) `f8395036544d806ebc68fd110a5621c49991a91d` (v1.6.12), with its own submodules, and `patches/clownmdemu.patch` | AGPL-3.0-or-later (ClownMDEmu, clown68000, clownz80 and the patch) with 0BSD, BSD-3-Clause and MIT libraries | `clownmdemu.js`, `.wasm` |
 | Stella (Atari 2600) | `stella`: [stella-emu/stella](https://github.com/stella-emu/stella) `c4016ea4891cb0f90979cb35182214af4c1cb4e7` (7.0c), and `patches/stella.patch` | GPL-2.0-or-later (Stella and the patch) with MIT, LGPL-2.1-or-later and public-domain libraries | `stella.js`, `.wasm` |
 | ProSystem (Atari 7800) | `prosystem-libretro`: [libretro/prosystem-libretro](https://github.com/libretro/prosystem-libretro) `8a88014287c7a01cd568067e5a557d0a2b2a051f` (1.3e), and `patches/prosystem.patch` | GPL-2.0-or-later (ProSystem and the patch) with LGPL-2.0 (Ron Fries' TIA and POKEY sound), zlib (CoreTone) and MIT (libretro-common) | `prosystem.js`, `.wasm` |
+| Handy (Atari Lynx) | `libretro-handy`: [libretro/libretro-handy](https://github.com/libretro/libretro-handy) `bc55d462f0b2d6b073ea93dc552ebd73cec60fd1` (0.97), and `patches/handy.patch` | zlib (Handy and the patch) with LGPL-2.1-or-later (Blip_Buffer), GPL-2.0-or-later (Stereo_Buffer) and MIT (libretro-common) | `handy.js`, `.wasm` |
 
 This is the commit libretro's buildbot built for RetroArch 1.22.2 (its core reports "(SVN) 5cd4a43"), which is the
 build Rombie's solo NES runs (Nostalgist's cores come from `arianrhodsandlot/retroarch-emscripten-build@v1.22.2`,
@@ -253,11 +260,53 @@ and the frame shows whatever the last drawn one left, which after a rollback can
 frames of Rampage's 6,000, the same with and without the patch). The game never sees it, and the whole state is exact,
 so Rombie compares the whole state for the 7800 and not the picture, as for ClownMDEmu.
 
+Handy is the commit Rombie's solo Lynx runs (`handy/` in this repo), with the same boot ROM change: the core is built
+without `lynx/lynxdec.cpp` (a file that states no license), so a cart starts only with the player's own `lynxboot.img`
+in the system folder, which `load` puts there as a BIOS. It is built as libretro builds it for Emscripten
+(`platform=emscripten`, C++ without exceptions); a statically linked Handy leaves libretro-common's helpers to the
+frontend, so `build.sh` compiles Handy's own copy of them and the frontend against its `libretro.h`. With
+`handy_link_consoles` at 1, the default, it plays as the solo core does, and its state is the solo core's (134,422
+bytes), so a solo game's state loads here.
+
+What this build is for is the ComLynx link, in `patches/handy.patch`, whose header lists it in full. With
+`handy_link_consoles` above 1 (read as the game loads), the one core runs that many Lynxes of the same cart, up to
+eight, their serial ports on one cable: console n reads port n's pad, and `handy_link_screen` and `handy_link_audio`
+choose the console this PC shows and hears. As with the Game Gear's link, the cable stays inside the core: the consoles
+take turns of `handy_link_slice` system cycles (1,024 by default, 64 us of a 16 MHz Lynx, less than half a byte on the
+cable at 62,500 baud), so every PC runs every console and only the pads, the host's state and the checksums travel.
+Each console has its own copy of what Handy keeps in globals, put in place while it runs. Each PC sets the screen and
+sound options to its own console; they change nothing in the state. The state holds every console, the frames since
+power-on and the bytes on the cable, 270,316 bytes for two consoles and 539,720 for four.
+
+Getting Epyx's link protocol (RedEye, which Gauntlet: The Third Encounter and the other Epyx games use) to form took
+three things beyond running the consoles side by side, each found by watching Gauntlet's own code:
+
+- The cable. Handy queued each byte for its own console and looped it back ahead of everything waiting, so two
+  consoles sending at once each got a clean echo and then the other's byte as another byte. ComLynx is one wire every
+  console drives and hears, a low bit from any of them winning, and RedEye checks its echo to find collisions. The
+  patch replaces the queue on a linked console with that wire: each byte is a frame of nine bits (the parity bit
+  Mikey sends) with the bus cycles it starts and ends at; after each round of turns, every frame that has ended goes to
+  every console's one receive register, the sender's too, merged with any frame that overlapped it, with a framing
+  error when they did not start together, and a parity error when the ninth bit is wrong (which Handy's SERCTL lacked).
+- The timers. A one-shot timer that has finished stops counting; started again by clearing its done flag, Handy
+  counted the whole time it had stood still at once and fired at its next update. RedEye starts timer 1 again at each
+  byte it receives, as a timeout that throws a half-received message away, so on Handy every message was cut after its
+  first byte and none came through whole. On a linked console the timer now counts from the moment it starts again.
+- Power-on. Started on the same cycle, the consoles run alike to the cycle and make the same choices from what they
+  hear, and each keeps claiming to be player 1. Console n is switched on `handy_link_stagger` frames (20 by default,
+  read as the game loads) and 1/`handy_link_consoles` of a frame after the one before it, as players switch theirs on
+  a moment apart; the part of a frame keeps their vertical blanks, where RedEye sends each player's state in play,
+  apart, as separate crystals would. A console hears nothing on the cable before it is on.
+
+None of it applies with one console. Console n's EEPROM is memory id `n << 8` (see Save RAM), read and written in place,
+and saved as its own file (`.n` after the name past the first). System RAM is the first console's. Select doesn't turn
+the screen with more than one console, and the screen's rotation follows the cart.
+
 ## Building
 
 From the repo root, with the submodules checked out (`git submodule update --init netplay/fceumm netplay/supafaust
 netplay/pcsx_rearmed netplay/gearsystem netplay/emu2413 netplay/clownmdemu-libretro netplay/stella
-netplay/prosystem-libretro`, then
+netplay/prosystem-libretro netplay/libretro-handy`, then
 `git -C netplay/clownmdemu-libretro submodule update --init --recursive`; pcsx_rearmed's own submodules are not needed):
 
 ```sh
@@ -286,7 +335,9 @@ e5492fd261a96b7dd1b7e8b0483054e5dc0bc935d01fd1a43d97a4be77b52203  stella.wasm
 ```
 
 This is `rombie-netplay-engine-2026.0.3`: the first ten are 2026.0.2's files, unchanged, and Stella's and ProSystem's
-four are new. Two builds from the same checkout gave the same fourteen files.
+four are new. Two builds from the same checkout gave the same fourteen files. Since that release the frontend takes
+eight ports and the ClownMDEmu and Supafaust patches have changed (Rombie BRAIN-45), so every file differs from these,
+and Handy's two are new, until the next release records its own.
 
 In `rombie-netplay-engine-2026.0.2` every file changed from 2026.0.1: the frontend's save RAM calls take a memory id, it limits
 a core's log messages, the Worker script has the save folder messages, and both are built into each core's files.
@@ -299,7 +350,7 @@ differs where it is said to (NES's sound filter, PS1's save counter, SNES's DSP-
 
 `test.html` checks the engine on its own. Serve this folder over HTTP after building (a Worker will not start from
 `file://`), for example `python -m http.server 8642` here, open `http://localhost:8642/test.html` (the NES engine;
-`test.html?engine=out/supafaust.js` for SNES; `?engine=out/pcsx_rearmed.js` for PS1, picking all of a disc's files and a BIOS; `?engine=out/gearsystem.js` for a Game Gear game's link, with the link on and engine B on the second console as a session's guest has it (`?options=gearsystem_link_enable=Disabled` for a Master System game); `?engine=out/clownmdemu.js` for Genesis or a Sega CD disc (`?options=clownmdemu_input_protocol=ea` or `=sega` for a multitap adapter); `?engine=out/stella.js` for a 2600 game, with `?devices=` giving the port devices (`257,257` joysticks, `1281,1281` paddles, `1537,1537` driving controllers), `?stick=1` moving each scripted player's left stick as well, and `?ports=` scripting up to eight players (`4` for four paddles, `8` for two multitaps); `?engine=out/prosystem.js` for a 7800 game; `?options=key=value;key=value` and `?optionsB=` to set core options, and `?scriptFrames=` to keep a longer run's input script, so a shorter run stops partway through the same play), pick a ROM and run:
+`test.html?engine=out/supafaust.js` for SNES; `?engine=out/pcsx_rearmed.js` for PS1, picking all of a disc's files and a BIOS; `?engine=out/gearsystem.js` for a Game Gear game's link, with the link on and engine B on the second console as a session's guest has it (`?options=gearsystem_link_enable=Disabled` for a Master System game); `?engine=out/clownmdemu.js` for Genesis or a Sega CD disc (`?options=clownmdemu_input_protocol=ea` or `=sega` for a multitap adapter); `?engine=out/stella.js` for a 2600 game, with `?devices=` giving the port devices (`257,257` joysticks, `1281,1281` paddles, `1537,1537` driving controllers), `?stick=1` moving each scripted player's left stick as well, and `?ports=` scripting up to eight players (`4` for four paddles, `8` for two multitaps); `?engine=out/prosystem.js` for a 7800 game; `?engine=out/handy.js` for a Lynx game, picking `lynxboot.img` as the BIOS, with `?options=handy_link_consoles=N` linking N consoles (engine B then shows and hears console 2, as a guest does, and N players are scripted) and `?presses=frame:port:BUTTON[:frames]` with `?quiet=N` scripting a way through a game's menus; `?options=key=value;key=value` and `?optionsB=` to set core options, and `?scriptFrames=` to keep a longer run's input script, so a shorter run stops partway through the same play), pick a ROM and run:
 
 - **Determinism**: engine A runs scripted two-player input straight (`?ports=` for more); engine B runs the same input
   the way a guest's rollback session does (every scripted player's input arrives up to 7 frames late, B repeats the
@@ -311,7 +362,8 @@ differs where it is said to (NES's sound filter, PS1's save counter, SNES's DSP-
 - **Stress**: every frame, roll back 8 frames and run them again plus one new frame, at 60 fps, counting the page's
   message round trips.
 - **Solo state**: load a core state taken from a RetroArch save state and play on.
-- **Save RAM**: write a different pattern to each memory id (Gearsystem's `0x100` and `0x200`) and read them back.
+- **Save RAM**: write a different pattern to each memory id (Gearsystem's `0x100` and `0x200`, Handy's `0x100` up to
+  one per console) and read them back.
 
 Supafaust, 36,000 frames each (10 minutes of play) with 2,621 rollbacks, on the PC the engine was built on (2026-10-10):
 
@@ -418,6 +470,18 @@ The final states match in every run. A save takes 5 to 11 us and a load 12 to 21
 state from `rombie-prosystem-engine-2026.0.0`, in play, loads, draws its first frame and plays on, and a state this
 engine saved loads on that unpatched core and plays on.
 
+Handy, Gauntlet: The Third Encounter with the player's `lynxboot.img`, on the same PC (2026-11-18). With one console it
+plays as solo: the title, the character menu and the dungeon, its buttons and its sound. With two, both consoles reach
+the meteor screen, player 1's A takes both to the character menu (each offered a different hero, since a hero can be
+picked once), and a two-player game starts, each engine showing its own player with the other in view; the two
+engines' whole states match on every frame. The power-on gap was tried at 0, 5, 20, 30 and 60 frames: every gap but 0
+links (at 60 the presses came before the second console reached the meteor screen, and the link formed at the menu).
+The determinism run with two consoles, 1,500 frames with 183 rollbacks of engine B (453 frames run again), matched in
+game memory and whole state on every frame (pictures differ by design, B showing console 2). On a scratch Gauntlet with
+LNX header byte 60 set to 1 (a 93C46 EEPROM), each console's 128-byte EEPROM, with one, two and four consoles, read
+back the pattern written to it after 120 frames and again after a state was saved, the EEPROMs cleared and the state
+loaded; memory id 0 holds nothing.
+
 ## Licenses
 
 fceumm and Supafaust are GPL-2.0-or-later; their own copies of the license (`Copying`, `COPYING`) are in the
@@ -455,3 +519,10 @@ version"; its `License.txt` is an older printing of `LICENSES/GPL-2.0.txt`), and
 engine compiles in what `prosystem/`'s does, under their own licenses: Ron Fries' TIA and POKEY sound (version 2 of the
 GNU Library General Public License, whose section 3 lets them go under the GPL; their legend stays in the source),
 Osman Celimli's CoreTone (zlib, `LICENSES/bupboop-zlib.txt`) and libretro-common (MIT).
+
+Handy is zlib (`LICENSES/handy-zlib.txt`: "Copyright (c) 2004 K. Wilkins", in every `lynx/` file with a header), and so
+is `patches/handy.patch`, a change to Handy whose header and a "Changed for Rombie" comment at each change mark the
+altered files, as zlib's second condition asks. zlib lets it go with this folder's GPL-2.0-or-later files, so
+`handy.js` and `.wasm` are GPL-2.0-or-later as a whole. Its engine compiles in, under their own licenses: Blip_Buffer
+0.4.1 (LGPL-2.1-or-later), Stereo_Buffer 0.3.0 (GPL-2.0-or-later) and libretro-common (MIT). `lynx/lynxdec.cpp`, which
+states no license, is not built, nor in the source archive.
