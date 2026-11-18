@@ -29,7 +29,7 @@ Single-threaded, so no `SharedArrayBuffer` and no cross-origin isolation.
 | `gearsystem/` | The Master System and Game Gear core, a submodule pinned to its commit |
 | `emu2413/` | Okazaki's YM2413 emulator, a submodule pinned to its commit, which Gearsystem is built with in place of the one file it has from Genesis Plus GX |
 | `overlay/` | The two files that stand in for Gearsystem's `src/audio/emu2413/emu2413.c` and `.h` (see The cores) |
-| `patches/mednafen_supafaust.patch` | Supafaust's changes for a build with no threads, the same as `snes/patches/` |
+| `patches/mednafen_supafaust.patch` | Supafaust's changes for a build with no threads, as in `snes/patches/`, and its multitaps changing in play (see The cores) |
 | `patches/pcsx_rearmed.patch` | pcsx_rearmed's changes so a loaded state runs on exactly as the saved one would (see The cores) |
 | `stella/` | The Atari 2600 core, a submodule pinned to its commit |
 | `patches/stella.patch` | Stella's changes, the same file as `stella/patches/` (see The cores) |
@@ -124,11 +124,18 @@ The core is built the way libretro builds it for Emscripten (`platform=emscripte
 libretro-common's file, memory-stream and string helpers to the frontend, so `build.sh` compiles the core's own copy of
 them into the engine.
 
-Supafaust is the commit Rombie's solo SNES runs, built in `snes/` with the same patch, so a solo SNES game's state
-loads here the same way. It is built as `snes/` builds it (`platform=emscripten`, WebAssembly exceptions, which
+Supafaust is the commit Rombie's solo SNES runs, built in `snes/` with the same changes for no threads, so a solo
+SNES game's state loads here the same way. It is built as `snes/` builds it (`platform=emscripten`, WebAssembly exceptions, which
 Mednafen uses in ordinary control flow) and linked as C++. Its own `libretro.h` predates calls the frontend handles,
 so the frontend is compiled against fceumm's copy of the header; the libretro interface itself is unchanged. Its
-multitap is a core option (`supafaust_multitap`), which Rombie sets at `load`, as solo play does.
+multitaps are a core option (`supafaust_multitap`), which Rombie sets at `load`, as solo play does, and which the
+patch also lets change in play, so a room can add the port-1 multitap for a sixth player without starting the game
+again. All eight ports have a gamepad from `load`, and the option's multitaps go in as a state is saved or loaded or
+the game is reset, so every PC, starting from one saved state, changes at the same frame. A state loads with the
+multitaps it was saved with (found by their sections, `MT_PORT0` and `MT_PORT1`), since on Mednafen's fast path its
+sections must match the console's devices, and the option's go in after it. The state's size is measured with both
+multitaps in, the most it holds, so it stays the same on every PC; a solo state, sized for port 2's alone, is shorter
+by the port-1 multitap's sections, and Rombie pads it with zeros (Mednafen's state ends where its last section does).
 
 pcsx_rearmed is the commit libretro's buildbot built for RetroArch 1.22.2 (its core reports "r25 228c14e"), which
 Rombie's solo PS1 runs, so a solo PS1 game's state loads here. `platform=emscripten` builds it with no threads, no

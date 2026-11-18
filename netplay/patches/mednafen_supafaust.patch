@@ -1,8 +1,128 @@
 diff --git a/libretro.cpp b/libretro.cpp
-index f8bca7a..8a7f7cc 100644
+index f8bca7a..555a0f4 100644
 --- a/libretro.cpp
 +++ b/libretro.cpp
-@@ -691,7 +691,12 @@ MDFN_COLD RETRO_API bool retro_load_game(const retro_game_info* game)
+@@ -8,6 +8,9 @@
+ #include "libretro.h"
+ 
+ using namespace Mednafen;
++
++// input.h names Mednafen's types unqualified, as the core's own files include it after this using.
++#include <mednafen/snes_faust/input.h>
+ //
+ //
+ //
+@@ -336,8 +339,78 @@ RETRO_API void retro_set_controller_port_device(unsigned port, unsigned device)
+ 
+ }
+ 
++static const struct
++{
++ const char* lrv;
++ bool sport1;
++ bool sport2;
++ size_t ports_active;
++} multitap_modes[] =
++{
++ { "disabled",    false, false, 2 },
++ { "port1",       true,  false, 5 },
++ { "port2",       false, true,  5 },
++ { "port1+port2", true,  true,  8 },
++};
++
++// Which multitaps are in, as supafaust_multitap last set them.
++static bool multitaps_in[2];
++
++// Rombie: supafaust_multitap also takes effect in play, as a state is saved or loaded or the game is reset (not only at
++// load), so netplay can add the port-1 multitap for a sixth player without starting the game again: every PC starts
++// from one saved state, so all of them change at the same frame. All eight ports have a gamepad from load; the
++// multitaps decide which ones the console reads.
++static void set_multitaps(bool sport1, bool sport2)
++{
++ if(sport1 == multitaps_in[0] && sport2 == multitaps_in[1])
++  return;
++
++ const bool enabled[2] = { sport1, sport2 };
++
++ MDFNI_SetSetting("snes_faust.input.sport1.multitap", sport1 ? "1" : "0");
++ MDFNI_SetSetting("snes_faust.input.sport2.multitap", sport2 ? "1" : "0");
++ MDFN_IEN_SNES_FAUST::INPUT_SetMultitap(enabled);
++ multitaps_in[0] = sport1;
++ multitaps_in[1] = sport2;
++}
++
++static void apply_multitap(void)
++{
++ const char* const v = get_option("supafaust_multitap");
++
++ for(auto const& mode : multitap_modes)
++ {
++  if(MDFN_strazicmp(v, mode.lrv))
++   continue;
++
++  set_multitaps(mode.sport1, mode.sport2);
++  ports_active = mode.ports_active;
++  return;
++ }
++}
++
++// Whether a state has a section of this name: Mednafen's fast-path state writes each one's name as 32 bytes, zero
++// padded, ahead of its data. A multitap's is MT_PORT0 (port 1) or MT_PORT1 (port 2).
++static bool state_has_section(const void* data, size_t size, const char* name)
++{
++ char field[32] = { 0 };
++ strncpy(field, name, sizeof(field) - 1);
++
++ const uint8* p = (const uint8*)data;
++ const uint8* const end = p + size;
++
++ while((size_t)(end - p) >= sizeof(field) && (p = (const uint8*)memchr(p, field[0], end - p - sizeof(field) + 1)))
++ {
++  if(!memcmp(p, field, sizeof(field)))
++   return true;
++  p++;
++ }
++ return false;
++}
++
+ RETRO_API void retro_reset(void)
+ {
++ apply_multitap();
+  MDFNI_Reset();
+ }
+ 
+@@ -482,6 +555,7 @@ RETRO_API size_t retro_serialize_size(void)
+ 
+ RETRO_API bool retro_serialize(void* data, size_t size)
+ {
++ apply_multitap();
+  ExtMemStream ssms(data, size);
+  MDFNSS_SaveSM(&ssms, true);
+  return true;
+@@ -489,8 +563,13 @@ RETRO_API bool retro_serialize(void* data, size_t size)
+ 
+ RETRO_API bool retro_unserialize(const void* data, size_t size)
+ {
++ // Rombie: on Mednafen's fast path a state's sections must match the console's devices (at the first that doesn't,
++ // the rest are skipped), so it loads with the multitaps it was saved with (a solo state has port 2's alone), and
++ // supafaust_multitap's go in after it.
++ set_multitaps(state_has_section(data, size, "MT_PORT0"), state_has_section(data, size, "MT_PORT1"));
+  ExtMemStream ssms(data, size);
+  MDFNSS_LoadSM(&ssms, true);
++ apply_multitap();
+  return true;
+ }
+ 
+@@ -682,6 +761,8 @@ MDFN_COLD RETRO_API bool retro_load_game(const retro_game_info* game)
+      MDFNI_SetSetting("snes_faust.input.sport1.multitap", tte.sport1);
+      MDFNI_SetSetting("snes_faust.input.sport2.multitap", tte.sport2);
+      ports_active = tte.ports_active;
++     multitaps_in[0] = tte.sport1[0] == '1';
++     multitaps_in[1] = tte.sport2[0] == '1';
+      break;
+     }
+    }
+@@ -691,7 +772,12 @@ MDFN_COLD RETRO_API bool retro_load_game(const retro_game_info* game)
    pipe_option("supafaust_superfx_clock_rate", "snes_faust.superfx.clock_rate");
    pipe_option_bool("supafaust_superfx_icache", "snes_faust.superfx.icache");
  
@@ -15,6 +135,29 @@ index f8bca7a..8a7f7cc 100644
    //
    //
    //
+@@ -705,7 +791,7 @@ MDFN_COLD RETRO_API bool retro_load_game(const retro_game_info* game)
+   cgi = MDFNI_LoadGame(&gf);
+   //
+   //
+-  for(size_t i = 0; i < ports_active; i++)
++  for(size_t i = 0; i < 8; i++)
+   {
+    port_data[i] = MDFNI_SetInput(i/*port*/, 1/*device type id, gamepad*/);
+   }
+@@ -721,8 +807,13 @@ MDFN_COLD RETRO_API bool retro_load_game(const retro_game_info* game)
+   surf.reset(new MDFN_Surface(nullptr, cgi->fb_width, cgi->fb_height, cgi->fb_width, nf));
+   //
+   {
++   // Measured with both multitaps in, the most a state holds, since they can go in during play (apply_multitap), and so
++   // that it is the same size on every PC whichever multitaps it loaded with.
++   const bool both[2] = { true, true };
++   MDFN_IEN_SNES_FAUST::INPUT_SetMultitap(both);
+    MemoryStream ssms(65536);
+    MDFNSS_SaveSM(&ssms, true);
++   MDFN_IEN_SNES_FAUST::INPUT_SetMultitap(multitaps_in);
+ 
+    SaveStateSize = ssms.size(); // FIXME for other than snes_faust, may grow.
+    SaveStateSize += 64*2*4*2; // OwlBuffer-related kludge, leftover, 2 channels(l/r), 4 bytes per sample, *2 again for MSU1
 diff --git a/mednafen/config.h b/mednafen/config.h
 index 720638d..8a9e77c 100644
 --- a/mednafen/config.h
