@@ -272,8 +272,10 @@ What this build is for is the ComLynx link, in `patches/handy.patch`, whose head
 `handy_link_consoles` above 1 (read as the game loads), the one core runs that many Lynxes of the same cart, up to
 eight, their serial ports on one cable: console n reads port n's pad, and `handy_link_screen` and `handy_link_audio`
 choose the console this PC shows and hears. As with the Game Gear's link, the cable stays inside the core: the consoles
-take turns of `handy_link_slice` system cycles (1,024 by default, 64 us of a 16 MHz Lynx, less than half a byte on the
-cable at 62,500 baud), so every PC runs every console and only the pads, the host's state and the checksums travel.
+take turns of `handy_link_slice` system cycles (2,048 by default, 128 us of a 16 MHz Lynx), so every PC runs every
+console and only the pads, the host's state and the checksums travel. The default is less than a byte on the cable
+(2,816 cycles at 62,500 baud), so the bytes one console sends end in different rounds and none overruns the one before
+it: at 4,096 two Lynxes still link, but eight lose players in Todd's Adventures in Slime World, and at 8,192 none link.
 Each console has its own copy of what Handy keeps in globals, put in place while it runs. Each PC sets the screen and
 sound options to its own console; they change nothing in the state. The state holds every console, the frames since
 power-on and the bytes on the cable, 270,316 bytes for two consoles and 539,720 for four.
@@ -482,6 +484,60 @@ game memory and whole state on every frame (pictures differ by design, B showing
 LNX header byte 60 set to 1 (a 93C46 EEPROM), each console's 128-byte EEPROM, with one, two and four consoles, read
 back the pattern written to it after 120 frames and again after a state was saved, the EEPROMs cleared and the state
 loaded; memory id 0 holds nothing.
+
+Handy's link through rollbacks, on the same PC (2026-11-18), the determinism run for ten minutes of play (36,000 frames)
+each, scripted into each game's link play (`?presses=` and `?quiet=`), with late input on every port:
+
+| Game | Consoles | Rollbacks of B (frames run again) | Mismatches (game memory, whole saved state) | At the end |
+| --- | --- | --- | --- | --- |
+| Gauntlet: The Third Encounter | 2 | 4,350 (11,316) | 0, 0 | in the dungeon, each engine on its own player |
+| Gauntlet: The Third Encounter | 4 | 6,957 (18,690) | 0, 0 | in the dungeon, each engine on its own player |
+| Todd's Adventures in Slime World | 2 | 4,313 (11,222) | 0, 0 | in the caves, each engine on its own Todd |
+| Todd's Adventures in Slime World | 4 | 6,895 (18,521) | 0, 0 | in the caves, each engine on its own Todd |
+| Todd's Adventures in Slime World | 8 | 9,866 (27,389) | 0, 0 | in the caves, each engine on its own Todd |
+
+The final states match in every run; the pictures differ by design. The slice was tried at 1,024, 2,048, 4,096, 8,192
+and 16,384 cycles. With two consoles, both games link up to 4,096, and neither does at 8,192 or more. With eight in
+Slime World, at 4,096 the title's player count sits at 7 for long stretches and flickers to 8, and player 1's A never
+starts the game; at 1,024 and 2,048 it counts up to 8 as the consoles switch on and holds there, and the game starts
+with all eight. The same five runs at 4,096 matched too, but there Slime World's eight never left the title.
+
+Handy's frame cost with linked consoles, on the main PC (Ryzen 9 5950X, 2026-11-18): `bench`'s timings, then its stress
+run for 60 seconds, N frames rolled back and run again plus one new every frame, in Slime World's caves (scripted as
+above). A stress cell gives the frames per second held and the round trip's mean as a share of the 16.7 ms frame; slow
+is under 59 fps or a 95th percentile over the frame:
+
+| Consoles | Frame | State | Save, load | Stress, 8 back | 4 back | 2 back |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.29 ms | 134,422 bytes | 6 us, 28 us | 60.0 fps, 20% | 60.0 fps, 11% | 60.0 fps, 7% |
+| 2 | 0.61 ms | 270,316 bytes | 14 us, 60 us | 60.0 fps, 40% | 60.0 fps, 22% | 60.0 fps, 15% |
+| 3 | 0.89 ms | 405,018 bytes | 20 us, 87 us | 59.8 fps, 63% | 60.0 fps, 34% | 60.0 fps, 21% |
+| 4 | 1.20 ms | 539,720 bytes | 26 us, 115 us | 55.8 fps, 88%, slow | 60.0 fps, 47% | 60.0 fps, 26% |
+| 5 | 1.52 ms | 674,422 bytes | 33 us, 145 us | 48.5 fps, 112%, slow | 59.9 fps, 60% | 60.0 fps, 34% |
+| 6 | 1.79 ms | 809,124 bytes | 39 us, 172 us | 44.0 fps, 129%, slow | 59.3 fps, 67%, slow | 60.0 fps, 40% |
+| 7 | 2.08 ms | 943,826 bytes | 45 us, 202 us | 37.3 fps, 155%, slow | 53.8 fps, 88%, slow | 60.0 fps, 49% |
+| 8 | 2.31 ms | 1,078,528 bytes | 52 us, 226 us | 33.6 fps, 174%, slow | 52.8 fps, 93%, slow | 59.7 fps, 65%, slow |
+
+The laptop (Core i7-8750H) has no boot ROM, so it ran the same with a test program: a BS93 file written for these
+checks that draws bars and lines through Suzy as fast as it can. Slime World's stress costs about 2.2 times the test
+program's on the main PC, and the laptop takes about 1.55 times the main PC's time:
+
+| Consoles | Main PC, 8 back | Laptop, 8 back | Laptop, 4 back | Laptop, 2 back |
+| --- | --- | --- | --- | --- |
+| 1 | 60.0 fps, 12% | 60.0 fps, 23% | 60.0 fps, 11% | 59.2 fps, 10% |
+| 2 | 60.0 fps, 20% | 60.0 fps, 32% | 59.8 fps, 25% | 58.4 fps, 29%, slow |
+| 3 | 60.0 fps, 29% | 60.0 fps, 45% | 59.9 fps, 29% | 60.0 fps, 17% |
+| 4 | 60.0 fps, 39% | 59.8 fps, 60%, slow | 60.0 fps, 31% | 60.0 fps, 22% |
+| 5 | 60.0 fps, 49% | 58.9 fps, 73%, slow | 60.0 fps, 36% | 60.0 fps, 26% |
+| 6 | 60.0 fps, 59% | 57.2 fps, 89%, slow | 60.0 fps, 43% | 60.0 fps, 30% |
+| 7 | 59.6 fps, 88%, slow | 54.3 fps, 105%, slow | 60.0 fps, 49% | 60.0 fps, 33% |
+| 8 | 59.8 fps, 77% | 49.9 fps, 118%, slow | 59.5 fps, 59% | 59.7 fps, 43% |
+
+The laptop's one- and two-console runs have single frames of 100 to 200 ms from outside the engine; a second run of
+two consoles at 8 back held 59.5 fps. Run to run, a row moves by about one console's worth. Scaled by the laptop's
+time, Slime World holds about 2 consoles on it at 8 back, 3 at 4 back and 6 at 2 back. Rombie's Lynx link rooms take
+up to six (the user's choice, 2026-11-18): Rombie delays input by 2 frames, so a rollback is 2 frames or less while
+the other players' input takes 4 frames (67 ms) or less to arrive.
 
 ## Licenses
 

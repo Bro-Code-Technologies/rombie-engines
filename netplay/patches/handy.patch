@@ -16,8 +16,9 @@ netplay session runs every console and only the pads travel. With one console (t
 the core plays as it did.
 - Core options: handy_link_consoles (1-8, read as the game loads), handy_link_screen and handy_link_audio (the
   console, 1 to handy_link_consoles, this PC shows and hears), handy_link_slice (the system cycles each console runs
-  in its turn, 1024 by default) and handy_link_stagger (the frames between one console's power-on and the next's, 20
-  by default, up to 600, read as the game loads).
+  in its turn, 2048 by default, less than a byte on the cable, the largest power of two with which eight consoles'
+  link holds) and handy_link_stagger (the frames between one console's power-on and the next's, 20 by default, up to
+  600, read as the game loads).
 - Handy keeps a Lynx's timing and CPU flags in globals (lynx/system.h). Each linked console keeps its own copy
   (HandyGlobals), put in place before it runs (HandyGlobalsLoad) and taken back after (HandyGlobalsSave), and its
   sound buffer, gAudioBuffer, is now a pointer to the console's own. The function statics that carry from one call to
@@ -70,10 +71,10 @@ index 89c398a..4a50984 100644
     $(CORE_DIR)/lynx/memmap.cpp \
     $(CORE_DIR)/lynx/mikie.cpp \
 diff --git a/libretro/libretro.cpp b/libretro/libretro.cpp
-index ad4efd7..a6612e9 100644
+index ad4efd7..2483406 100644
 --- a/libretro/libretro.cpp
 +++ b/libretro/libretro.cpp
-@@ -141,6 +141,217 @@ static bool libretro_supports_option_categories = false;
+@@ -141,6 +141,220 @@ static bool libretro_supports_option_categories = false;
  
  static unsigned retro_overclock = 1;
  
@@ -97,8 +98,11 @@ index ad4efd7..a6612e9 100644
 +static unsigned link_count  = 1;
 +static unsigned link_screen = 0;
 +static unsigned link_audio  = 0;
-+/* The system cycles each console runs before the next takes its turn (handy_link_slice). */
-+static ULONG link_slice     = 1024;
++/* The system cycles each console runs before the next takes its turn (handy_link_slice): 2048, 128 us, less than a
++ * byte on the cable (2816 cycles at 62,500 baud), so the bytes one console sends end in different rounds and none
++ * overruns the one before it. 4096 holds two Lynxes' link but loses players with eight (Todd's Adventures in Slime
++ * World), and 8192 doesn't link at all. */
++static ULONG link_slice     = 2048;
 +/* Console n is switched on n * (link_stagger frames and 1/link_count of a frame) after console 1 (handy_link_stagger,
 + * read as the game loads), as players switch theirs on a moment apart. Started on the same cycle, the consoles run
 + * alike to the cycle and make the same choices from what they hear, and the link never forms. Real Lynxes run on their
@@ -291,7 +295,7 @@ index ad4efd7..a6612e9 100644
  static void retro_audio_buff_status_cb(
        bool active, unsigned occupancy, bool underrun_likely)
  {
-@@ -590,6 +801,10 @@ static void lynx_rotate(void);
+@@ -590,6 +804,10 @@ static void lynx_rotate(void);
  
  static UBYTE* lynx_display_callback(ULONG objref)
  {
@@ -302,7 +306,7 @@ index ad4efd7..a6612e9 100644
     if(!video_out_enabled)
        return (UBYTE*)framebuffer;
  
-@@ -647,6 +862,13 @@ static UBYTE* lynx_display_callback(ULONG objref)
+@@ -647,6 +865,13 @@ static UBYTE* lynx_display_callback(ULONG objref)
     return (UBYTE*)framebuffer;
  }
  
@@ -316,7 +320,7 @@ index ad4efd7..a6612e9 100644
  static void lynx_rotate(void)
  {
     if (!lynx)
-@@ -696,37 +918,22 @@ static void lynx_rotate(void)
+@@ -696,37 +921,22 @@ static void lynx_rotate(void)
     switch (RETRO_PIX_DEPTH)
     {
        case 15:
@@ -359,7 +363,7 @@ index ad4efd7..a6612e9 100644
           break;
     }
  }
-@@ -757,7 +964,10 @@ static void check_variables(void)
+@@ -757,7 +967,10 @@ static void check_variables(void)
        else if (strcmp(var.value, "Auto") == 0)
           lynx_rot = RETRO_LYNX_ROTATE_AUTO;
  
@@ -371,7 +375,7 @@ index ad4efd7..a6612e9 100644
            (lynx_rot != old_lynx_rot))
           lynx_rotation_pending = ROTATION_PENDING_CORE;
     }
-@@ -844,6 +1054,39 @@ static void check_variables(void)
+@@ -844,6 +1057,39 @@ static void check_variables(void)
         (lynx_lcd_ghosting != old_lynx_lcd_ghosting))
        lcd_ghosting_init();
  
@@ -411,7 +415,7 @@ index ad4efd7..a6612e9 100644
     var.key               = "handy_overclock";
     var.value             = NULL;
  
-@@ -878,21 +1121,30 @@ void retro_init(void)
+@@ -878,21 +1124,30 @@ void retro_init(void)
  
  void retro_reset(void)
  {
@@ -449,7 +453,7 @@ index ad4efd7..a6612e9 100644
  
     if (framebuffer)
  #if defined(_3DS)
-@@ -1003,30 +1255,40 @@ void retro_run(void)
+@@ -1003,30 +1258,40 @@ void retro_run(void)
        check_variables();
  
     input_poll_cb();
@@ -509,7 +513,7 @@ index ad4efd7..a6612e9 100644
  
     /* Check whether current frame should be skipped
      * > Note: if gSkipFrame is already set, then it
-@@ -1077,14 +1339,21 @@ void retro_run(void)
+@@ -1077,14 +1342,21 @@ void retro_run(void)
        retro_refresh_rate_updated = false;
     }
  
@@ -536,7 +540,7 @@ index ad4efd7..a6612e9 100644
     }
  
     /* If no end of frame event was produced on this
-@@ -1093,6 +1362,23 @@ void retro_run(void)
+@@ -1093,6 +1365,23 @@ void retro_run(void)
        video_cb(NULL, lynx_width, lynx_height,
              RETRO_LYNX_WIDTH * RETRO_PIX_BYTES);
  
@@ -560,7 +564,7 @@ index ad4efd7..a6612e9 100644
     lynx->FetchAudioSamples();
  
     /* Divide gAudioBufferPointer by number of channels */
-@@ -1100,42 +1386,175 @@ void retro_run(void)
+@@ -1100,42 +1389,175 @@ void retro_run(void)
     gAudioBufferPointer = 0;
  }
  
@@ -750,7 +754,7 @@ index ad4efd7..a6612e9 100644
  }
  
  bool retro_load_game(const struct retro_game_info *info)
-@@ -1168,6 +1587,36 @@ bool retro_load_game(const struct retro_game_info *info)
+@@ -1168,6 +1590,36 @@ bool retro_load_game(const struct retro_game_info *info)
     bios_file[0]   = '\0';
     eeprom_file[0] = '\0';
  
@@ -787,7 +791,7 @@ index ad4efd7..a6612e9 100644
     /* Allocate video buffer */
  #if defined(_3DS)
     framebuffer = (uint8_t*)linearMemAlign(
-@@ -1178,6 +1627,7 @@ bool retro_load_game(const struct retro_game_info *info)
+@@ -1178,6 +1630,7 @@ bool retro_load_game(const struct retro_game_info *info)
  #endif
     if (!framebuffer)
        return false;
@@ -795,7 +799,7 @@ index ad4efd7..a6612e9 100644
  
     environ_cb(RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, desc);
  
-@@ -1247,17 +1697,42 @@ bool retro_load_game(const struct retro_game_info *info)
+@@ -1247,17 +1700,42 @@ bool retro_load_game(const struct retro_game_info *info)
     init_frameskip();
     lcd_ghosting_init();
  
@@ -846,7 +850,7 @@ index ad4efd7..a6612e9 100644
     btn_map       = btn_map_no_rot;
  
     /* Apply initial rotation
-@@ -1266,6 +1741,7 @@ bool retro_load_game(const struct retro_game_info *info)
+@@ -1266,6 +1744,7 @@ bool retro_load_game(const struct retro_game_info *info)
     lynx_rotate();
     lynx_width  = lynx_width_next;
     lynx_height = lynx_height_next;
@@ -854,7 +858,7 @@ index ad4efd7..a6612e9 100644
  
     gSkipFrame        = 0;
     initialized       = true;
-@@ -1292,16 +1768,28 @@ unsigned retro_get_region(void)
+@@ -1292,16 +1771,28 @@ unsigned retro_get_region(void)
     return RETRO_REGION_NTSC;
  }
  
