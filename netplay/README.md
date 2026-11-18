@@ -535,9 +535,25 @@ program's on the main PC, and the laptop takes about 1.55 times the main PC's ti
 
 The laptop's one- and two-console runs have single frames of 100 to 200 ms from outside the engine; a second run of
 two consoles at 8 back held 59.5 fps. Run to run, a row moves by about one console's worth. Scaled by the laptop's
-time, Slime World holds about 2 consoles on it at 8 back, 3 at 4 back and 6 at 2 back. Rombie's Lynx link rooms take
-up to six (the user's choice, 2026-11-18): Rombie delays input by 2 frames, so a rollback is 2 frames or less while
-the other players' input takes 4 frames (67 ms) or less to arrive.
+time, Slime World holds about 2 consoles on it at 8 back, 3 at 4 back and 6 at 2 back.
+
+With its own boot ROM since, the laptop ran Slime World itself, scripted as above (2026-11-18). The scaling held: 2
+consoles at 8 back, 3 at 4 back and 6 at 2 back, with none of the test program's long single frames:
+
+| Consoles | Frame | Stress, 8 back | 4 back | 2 back |
+| --- | --- | --- | --- | --- |
+| 1 | 0.30 ms | 60.0 fps, 24% | 60.0 fps, 14% | 60.0 fps, 9% |
+| 2 | 0.64 ms | 59.6 fps, 49% | 60.0 fps, 28% | 60.0 fps, 18% |
+| 3 | 0.92 ms | 58.1 fps, 75%, slow | 60.0 fps, 43% | 60.0 fps, 28% |
+| 4 | 1.22 ms | 50.0 fps, 106%, slow | 59.7 fps, 60%, slow | 60.0 fps, 37% |
+| 5 | 1.53 ms | 41.1 fps, 138%, slow | 56.8 fps, 78%, slow | 59.9 fps, 48% |
+| 6 | 1.83 ms | 37.5 fps, 155%, slow | 53.6 fps, 90%, slow | 59.8 fps, 56% |
+| 7 | 2.10 ms | 31.2 fps, 189%, slow | 48.1 fps, 109%, slow | 58.4 fps, 67%, slow |
+| 8 | 2.42 ms | 27.3 fps, 217%, slow | 44.1 fps, 124%, slow | 56.1 fps, 79%, slow |
+
+Rombie's Lynx link rooms take up to six (the user's choice, 2026-11-18): Rombie delays input by 2 frames, so a
+rollback is 2 frames or less while the other players' input takes 4 frames (67 ms) or less to arrive. Six players
+across the two PCs held for ten minutes in Slime World with no out-of-step, the laptop on its own console.
 
 ## Licenses
 
