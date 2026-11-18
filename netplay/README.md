@@ -189,7 +189,10 @@ ClownMDEmu is the commit and patch Rombie's solo Genesis and Sega CD run (`clown
 state loads here; its core and libraries are submodules nested inside `clownmdemu-libretro`, which `build.sh` copies at
 the commits it pins. `patches/clownmdemu.patch` (the same file as `clownmdemu/patches/`) puts the pads' and multitap
 adapters' own state into a saved state: upstream leaves it out, so after a load a six-button pad's strobe count and
-an adapter's selected pad were wherever the other timeline left them, and two engines read different buttons. A Sega
+an adapter's selected pad were wherever the other timeline left them, and two engines read different buttons. It
+also numbers the Sega Team Player's pads by port (Rombie BRAIN-45): upstream numbers each tap's four 0 to 3, so the
+second port's tap asked for players 1 to 4 again; with the patch it reads players 5 to 8 (ports 4 to 7), as the core's
+"Multi (8 Players Maximum)" says. A Sega
 CD disc is mounted read-only as PS1's is; the core reads CHD with its own libchdr and carries its own boot ROM, so there
 is no BIOS. Its pictures can show stale colours for a few frames after a rollback (the core's colour cache is not part
 of a state; it catches up on the game's next palette write) while the state is exact, so Rombie compares the whole

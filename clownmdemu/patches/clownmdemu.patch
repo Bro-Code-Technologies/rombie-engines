@@ -4,6 +4,10 @@ Rombie's change to ClownMDEmu (Bro Code Technologies, 2026-10-16), under ClownMD
 Team Player's handshake). Without it, a loaded state reads the pads differently from the saved one: netplay's
 rollback falls out of step, and a save state loaded in play can misread the pads.
 
+And (2026-11-17) the Sega Team Player's pads are numbered by port: each tap numbers its own four 0 to 3, so the
+second port's tap asked the frontend for players 1 to 4 again; it now asks for players 5 to 8, as "Multi (8 Players
+Maximum)" says.
+
 diff --git a/common/core/source/clownmdemu.c b/common/core/source/clownmdemu.c
 index 84c6820..c8f3474 100644
 --- a/common/core/source/clownmdemu.c
@@ -39,3 +43,45 @@ index 192d810..b6d1d27 100644
  } ClownMDEmu_StateBackup;
  
  void ClownMDEmu_SaveState(const ClownMDEmu *clownmdemu, ClownMDEmu_StateBackup *backup);
+diff --git a/common/core/source/controller-manager.c b/common/core/source/controller-manager.c
+index 01cc509..86f7b7f 100644
+--- a/common/core/source/controller-manager.c
++++ b/common/core/source/controller-manager.c
+@@ -12,6 +12,20 @@ void ControllerManager_Initialise(ControllerManager* const manager)
+ 		ControllerMultitapSega_Initialise(&manager->state.sega_multitaps[i]);
+ }
+ 
++typedef struct ControllerManager_SegaTapPads
++{
++	Controller_Callback callback;
++	const void *user_data;
++	cc_u8f first_pad;
++} ControllerManager_SegaTapPads;
++
++static cc_bool ControllerManager_SegaTapCallback(void* const user_data, const cc_u8f controller_index, const Controller_Button button)
++{
++	const ControllerManager_SegaTapPads* const pads = (const ControllerManager_SegaTapPads*)user_data;
++
++	return pads->callback((void*)pads->user_data, pads->first_pad + controller_index, button);
++}
++
+ cc_u8f ControllerManager_Read(ControllerManager* const manager, const cc_u8f port_index, const cc_u16f microseconds, const Controller_Callback callback, const void* const user_data)
+ {
+ 	assert(port_index < 2);
+@@ -25,7 +39,15 @@ cc_u8f ControllerManager_Read(ControllerManager* const manager, const cc_u8f por
+ 			return ControllerMultitapEA_ReadPort(&manager->state.ea_multitap, port_index, microseconds, callback, user_data);
+ 
+ 		case CONTROLLER_MANAGER_PROTOCOL_SEGA_TAP:
+-			return ControllerMultitapSega_Read(&manager->state.sega_multitaps[port_index], callback, user_data);
++		{
++			/* Each Team Player's own pads are numbered 0 to 3, so the second port's are pads 4 to 7: players 5 to 8. */
++			ControllerManager_SegaTapPads pads;
++
++			pads.callback = callback;
++			pads.user_data = user_data;
++			pads.first_pad = port_index * 4;
++			return ControllerMultitapSega_Read(&manager->state.sega_multitaps[port_index], ControllerManager_SegaTapCallback, &pads);
++		}
+ 	}
+ 
+ 	/* Just a placeholder fall-back value. */

@@ -189,7 +189,9 @@ RetroArch's `Makefile.emscripten`) in the same Emscripten 3.1.46 image as `snes/
   (`ControllerManager_State`: a six-button pad's strobe count, the EA 4 Way Play's selected pad, the Sega Team
   Player's handshake), which upstream leaves out, so a loaded state reads the pads as the saved one would. Netplay's
   rollback needs it, and so does a save state loaded in a game played with an adapter. The patch changes the size of a
-  state, so 2026.0.0's states do not load in 2026.0.1. Everything else is built as ClownMDEmu's repo has it at the
+  state, so 2026.0.0's states do not load in 2026.0.1. Since 2026-11-17 it also numbers the Sega Team Player's pads
+  by port, so the second Team Player's are players 5 to 8 rather than players 1 to 4 again (a build from before then
+  lacks it; the state's size is unchanged). Everything else is built as ClownMDEmu's repo has it at the
   pinned commit;
 - the output named `ClownMDEmu`, the core's own library name (`LIBRETRO=ClownMDEmu`), so that RetroArch's save and
   save-state folders (named for the library) are the ones Nostalgist looks in when Rombie gives it the same name;

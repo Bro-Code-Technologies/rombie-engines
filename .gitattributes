@@ -3,3 +3,6 @@
 * text=auto eol=lf
 # Except the ProSystem patch, whose lines for ProSystem's CRLF files carry their CRs, byte for byte.
 netplay/patches/prosystem.patch -text
+# And the ClownMDEmu patch (both copies), whose lines for the core's CRLF controller-manager.c carry theirs.
+netplay/patches/clownmdemu.patch -text
+clownmdemu/patches/clownmdemu.patch -text
