@@ -474,8 +474,9 @@ Handy, Gauntlet: The Third Encounter with the player's `lynxboot.img`, on the sa
 plays as solo: the title, the character menu and the dungeon, its buttons and its sound. With two, both consoles reach
 the meteor screen, player 1's A takes both to the character menu (each offered a different hero, since a hero can be
 picked once), and a two-player game starts, each engine showing its own player with the other in view; the two
-engines' whole states match on every frame. The power-on gap was tried at 0, 5, 20, 30 and 60 frames: every gap but 0
-links (at 60 the presses came before the second console reached the meteor screen, and the link formed at the menu).
+engines' whole states match on every frame. The power-on gap was tried at 0 (the part of a frame only), 5, 20, 30 and
+60 frames, and every one links (at 60 the presses came before the second console reached the meteor screen, and the
+link formed at the menu); started on the same cycle, with no gap and no part of a frame, the consoles don't link.
 The determinism run with two consoles, 1,500 frames with 183 rollbacks of engine B (453 frames run again), matched in
 game memory and whole state on every frame (pictures differ by design, B showing console 2). On a scratch Gauntlet with
 LNX header byte 60 set to 1 (a 93C46 EEPROM), each console's 128-byte EEPROM, with one, two and four consoles, read
