@@ -320,26 +320,30 @@ The image is Emscripten 3.1.46, pinned by digest, the same as `snes/`. The outpu
 `.js` and `.wasm` per core, with their `SHA256SUMS`. Builds are byte for byte the same each time; this source builds:
 
 ```
-545e20e338ed01412fb8e3b703cc1de81b866d32a97157e272dbfc7dec61ba71  fceumm.js
-bc2504d91319f3057bd3886f5212f40f6becb82d8d7e772b9b11f09dee5b102a  fceumm.wasm
-a971620743731fd1ff651757e05c7af8c2cac5530e47f0dc6b9b2e95f42d3a19  supafaust.js
-60a4fa88228e8cf05619a74739acd98b8e11d31b5a1d1513a63e74317930f78e  supafaust.wasm
-ea8c7f349ea04a97171bb2990406b04105424a8b053f94f35a07064c6e40cd79  pcsx_rearmed.js
-cda5d2e20ff15aea4ac6b60069306af4c230a30dff5b165ebacb7cdb5bfc63f4  pcsx_rearmed.wasm
-cc1ffcfc79531957a3a3daaa338dee677efaff02eaa538ad0c4330615bd80b7d  gearsystem.js
-b39f56229acb6c45baa91173e176a2c2316fe53ef8bfd6b86a1b53d8688d5608  gearsystem.wasm
-d838fec78e3309b2ac92acea7060e11b2d9d4447c625b0c31ee55bf7bf37ffed  clownmdemu.js
-404bb448906c9d9d0947a2047350b8453ec41536ab2d83c49ce9a1d04d1d2c98  clownmdemu.wasm
-06bc91a7fda9dfc6ca31dc548c78e1a02798c6ec951563eca5b152e3aa6128a6  stella.js
-e5492fd261a96b7dd1b7e8b0483054e5dc0bc935d01fd1a43d97a4be77b52203  stella.wasm
-6a9f395fd7ee4cb28c3ca9c3d26137714a7c62d57a63f2b3e18f92de88169e0c  prosystem.js
-76a2e45157948b07ef767ae02fb9394951baeee01b2b87ccb977ef0987cd8d4b  prosystem.wasm
+dafac4575e6da0af6b217ce47a3dd3efa0fe5b575e9510af2cdb7280049f03e8  fceumm.js
+a50c6237915702a5f6e0c348809307712f27ccfe8b2632a4ef80b8c960fbab75  fceumm.wasm
+a65bcfb946a1a8cd706c81409afb10b23621ca1baae2e1e0eb2522572413c5ef  supafaust.js
+6d1a5bc3702ce53ce0542520f1477f382fedc4ea223b76dd284a84cb7e58f481  supafaust.wasm
+690a4e9042eaba931ddf7daedde300e1250f0419f1df05df39fa20d73531c11d  pcsx_rearmed.js
+1ec774011514796a8bbebf7a5afff9c668775a6c9b28a95745558fad8457aea7  pcsx_rearmed.wasm
+73e6edfa50d2907efd25942fdb95303b4e5f4b1b1f6a6290a78eca9ef04de27b  gearsystem.js
+25cbe3520ead0c078285979e58884e6a32651e0596d63e6dd6be447545e06ca3  gearsystem.wasm
+76b6be23db3bad586c78d86b55eee7b0fcbf2f5f9b4baacbfe1c5190b138cab3  clownmdemu.js
+ed4cac499c5a7211cad43a01856fa7c3ddd3441d5efaec01828f2171f5b6d137  clownmdemu.wasm
+067bb9306e0567a18f93eb6381fdabaa20d8d89a5030232d2598bbc4418873b8  stella.js
+85c8b67afba40388e77c18c7bcc1c72b1687e57712f857edf7e0e8cbce9c0ecc  stella.wasm
+5fa3780696bcc122bc9445a547853b944eeec684be1175fc7924442b87ab186f  prosystem.js
+fdf2dd3eacb94bec2704c5b879363385e1334fa2eeb41fb8a43937e5d3ba2e20  prosystem.wasm
+e9579bd283cd10b412f85e11fbcf5ec8d7a1d8dc83eea6cad5e41cc8924159ba  handy.js
+9215a5fc8633157ffb740748a3f7c6482c4b8de37c56c7e3f5800f331980f125  handy.wasm
 ```
 
-This is `rombie-netplay-engine-2026.0.3`: the first ten are 2026.0.2's files, unchanged, and Stella's and ProSystem's
-four are new. Two builds from the same checkout gave the same fourteen files. Since that release the frontend takes
-eight ports and the ClownMDEmu and Supafaust patches have changed (Rombie BRAIN-45), so every file differs from these,
-and Handy's two are new, until the next release records its own.
+This is `rombie-netplay-engine-2026.1.0`: the frontend takes eight ports, the ClownMDEmu and Supafaust patches have
+changed and Handy's two files are new (Rombie BRAIN-45), so every file differs from 2026.0.3's. The files Rombie serves,
+built as that work went, and a clean build of this commit gave the same sixteen files.
+
+In `rombie-netplay-engine-2026.0.3` the first ten were 2026.0.2's files, unchanged, and Stella's and ProSystem's four
+were new.
 
 In `rombie-netplay-engine-2026.0.2` every file changed from 2026.0.1: the frontend's save RAM calls take a memory id, it limits
 a core's log messages, the Worker script has the save folder messages, and both are built into each core's files.

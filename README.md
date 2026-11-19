@@ -94,6 +94,28 @@ a8f0a858a30e2b7fd13d439b922f1f0eeff412b32249321134ba201d4146f6ba  ClownMDEmu_lib
 0247b5c54c732eb1577a0f365e3721b2c6d7c21fd7b187fbba0d438e83352cbe  mgba-link.js
 ```
 
+`rombie-netplay-engine-2026.1.0` (the frontend takes eight ports, the ClownMDEmu and Supafaust patches changed, and
+Handy for the Lynx link added; every file differs from 2026.0.3's):
+
+```
+dafac4575e6da0af6b217ce47a3dd3efa0fe5b575e9510af2cdb7280049f03e8  fceumm.js
+a50c6237915702a5f6e0c348809307712f27ccfe8b2632a4ef80b8c960fbab75  fceumm.wasm
+a65bcfb946a1a8cd706c81409afb10b23621ca1baae2e1e0eb2522572413c5ef  supafaust.js
+6d1a5bc3702ce53ce0542520f1477f382fedc4ea223b76dd284a84cb7e58f481  supafaust.wasm
+690a4e9042eaba931ddf7daedde300e1250f0419f1df05df39fa20d73531c11d  pcsx_rearmed.js
+1ec774011514796a8bbebf7a5afff9c668775a6c9b28a95745558fad8457aea7  pcsx_rearmed.wasm
+73e6edfa50d2907efd25942fdb95303b4e5f4b1b1f6a6290a78eca9ef04de27b  gearsystem.js
+25cbe3520ead0c078285979e58884e6a32651e0596d63e6dd6be447545e06ca3  gearsystem.wasm
+76b6be23db3bad586c78d86b55eee7b0fcbf2f5f9b4baacbfe1c5190b138cab3  clownmdemu.js
+ed4cac499c5a7211cad43a01856fa7c3ddd3441d5efaec01828f2171f5b6d137  clownmdemu.wasm
+067bb9306e0567a18f93eb6381fdabaa20d8d89a5030232d2598bbc4418873b8  stella.js
+85c8b67afba40388e77c18c7bcc1c72b1687e57712f857edf7e0e8cbce9c0ecc  stella.wasm
+5fa3780696bcc122bc9445a547853b944eeec684be1175fc7924442b87ab186f  prosystem.js
+fdf2dd3eacb94bec2704c5b879363385e1334fa2eeb41fb8a43937e5d3ba2e20  prosystem.wasm
+e9579bd283cd10b412f85e11fbcf5ec8d7a1d8dc83eea6cad5e41cc8924159ba  handy.js
+9215a5fc8633157ffb740748a3f7c6482c4b8de37c56c7e3f5800f331980f125  handy.wasm
+```
+
 `rombie-netplay-engine-2026.0.3` (Stella for the 2600 and ProSystem for the 7800 added; the other ten files are 2026.0.2's):
 
 ```
@@ -316,8 +338,7 @@ docker build -t rombie-netplay netplay
 docker run --rm -v "${PWD}:/repo" rombie-netplay sh /repo/netplay/build.sh
 ```
 
-The output lands in `netplay/out/` with its `SHA256SUMS`, and matches the latest netplay release's hashes above byte for byte
-when built from that release's tag (master has moved on since, with the Atari Lynx's link among it);
+The output lands in `netplay/out/` with its `SHA256SUMS`, and matches the latest netplay release's hashes above byte for byte;
 `netplay/README.md` has the details.
 
 ## Releases
